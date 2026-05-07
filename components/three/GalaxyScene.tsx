@@ -1,388 +1,468 @@
 'use client';
-import { Suspense, useRef, useMemo } from 'react';
+import { Suspense, useRef, useMemo, useLayoutEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Text, Stars, Sparkles, Line, Billboard } from '@react-three/drei';
-import { EffectComposer, Bloom } from '@react-three/postprocessing';
+import { Html } from '@react-three/drei';
+import { EffectComposer, Bloom, Pixelation } from '@react-three/postprocessing';
 import {
   AdditiveBlending,
   BackSide,
-  BufferAttribute,
-  BufferGeometry,
   Color,
   Group,
+  InstancedMesh,
   Mesh,
-  Points,
+  Object3D,
 } from 'three';
 import {
-  GALAXY_PARAMS,
+  PIXEL_PARAMS,
+  EARTH_PALETTE,
   BRAND_COLORS,
   FEATURED_STARS,
   type FeaturedStar,
 } from '@/lib/galaxy-config';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function armPoint(arm: number, t: number) {
-  const { arms, radius, twist, innerCutoff } = GALAXY_PARAMS;
-  const r = innerCutoff * radius + t * (radius - innerCutoff * radius);
-  const armOffset = (arm / arms) * Math.PI * 2;
-  const angle = armOffset + t * twist;
-  return {
-    x: Math.cos(angle) * r,
-    z: Math.sin(angle) * r,
-    r,
-    angle,
-  };
+// ─── Continent generator ────────────────────────────────────────────────────
+// Layered sines stand in for value-noise — gives blob-shaped pseudo-continents
+// without pulling in a noise library.
+function elevationAt(lat: number, lon: number) {
+  const f1 = Math.sin(lon * 1.4 + lat * 0.9) * 0.70;
+  const f2 = Math.sin(lon * 2.7 - lat * 1.6) * 0.50;
+  const f3 = Math.sin(lat * 3.2 + lon * 0.4) * 0.55;
+  const f4 = Math.cos(lon * 0.6 + lat * 2.0) * 0.40;
+  return f1 + f2 + f3 + f4 - Math.abs(lat) * 0.18;
 }
 
-function ringPts(r: number, segs = 128): [number, number, number][] {
-  return Array.from({ length: segs + 1 }, (_, i) => {
-    const a = (i / segs) * Math.PI * 2;
-    return [r * Math.cos(a), 0, r * Math.sin(a)];
-  });
+function biomeColor(lat: number, lon: number, target: Color) {
+  const polar = Math.abs(lat);
+  if (polar > 1.34) return target.set(EARTH_PALETTE.ice);
+  if (polar > 1.20) {
+    const noisy = Math.sin(lon * 5 + lat * 2.4) + Math.cos(lat * 6.1) * 0.5;
+    return target.set(noisy > 0 ? EARTH_PALETTE.ice : EARTH_PALETTE.tundra);
+  }
+  const e = elevationAt(lat, lon);
+  if (e >  1.08) return target.set(EARTH_PALETTE.peak);
+  if (e >  0.55) return target.set(EARTH_PALETTE.highland);
+  if (e >  0.10) return target.set(EARTH_PALETTE.lowland);
+  if (e > -0.05) return target.set(EARTH_PALETTE.coast);
+  if (e > -0.55) return target.set(EARTH_PALETTE.shallow);
+  return target.set(EARTH_PALETTE.deep);
 }
 
-// ─── Galaxy disk ─────────────────────────────────────────────────────────────
-function GalaxyDisk() {
-  const ref = useRef<Points>(null);
+// ─── Voxel Earth ─────────────────────────────────────────────────────────────
+function VoxelEarth() {
+  const groupRef = useRef<Group>(null);
+  const meshRef = useRef<InstancedMesh>(null);
+  const { rows, cols, radius, voxelSize } = PIXEL_PARAMS.earth;
+  const count = rows * cols;
 
-  const geometry = useMemo(() => {
-    const { particleCount, arms, thickness, randomScatter, radius, innerCutoff } =
-      GALAXY_PARAMS;
+  useLayoutEffect(() => {
+    if (!meshRef.current) return;
+    const dummy = new Object3D();
+    const tmp = new Color();
+    let i = 0;
+    for (let r = 0; r < rows; r++) {
+      const lat = -Math.PI / 2 + ((r + 0.5) / rows) * Math.PI;
+      const cosLat = Math.cos(lat);
+      const sinLat = Math.sin(lat);
+      for (let c = 0; c < cols; c++) {
+        const lon = (c / cols) * Math.PI * 2;
+        const e = elevationAt(lat, lon);
+        const bump = Math.max(0, e) * 0.05;
+        const r2 = radius + bump;
 
-    const positions = new Float32Array(particleCount * 3);
-    const colors = new Float32Array(particleCount * 3);
-
-    const cHot   = new Color(BRAND_COLORS.coreHot);
-    const cWarm  = new Color(BRAND_COLORS.coreWarm);
-    const cMid   = new Color(BRAND_COLORS.armMid);
-    const cOuter = new Color(BRAND_COLORS.armOuter);
-    const cEdge  = new Color(BRAND_COLORS.edgeDeep);
-    const cAccentCyan   = new Color('#7FE7FF');
-    const cAccentViolet = new Color('#7C5CFF');
-
-    for (let i = 0; i < particleCount; i++) {
-      const arm = i % arms;
-      const t = Math.pow(Math.random(), 0.78);
-      const { x, z, r } = armPoint(arm, t);
-
-      const scatter = randomScatter * (1 - t * 0.55);
-      const sx = (Math.random() - 0.5) * scatter * 2;
-      const sz = (Math.random() - 0.5) * scatter * 2;
-      const thicknessAt = thickness * (1 - 0.7 * t);
-      const sy = (Math.random() - 0.5) * thicknessAt * 2 *
-        (Math.random() < 0.85 ? 1 : 0.35);
-
-      positions[i * 3 + 0] = x + sx;
-      positions[i * 3 + 1] = sy;
-      positions[i * 3 + 2] = z + sz;
-
-      const tNorm = Math.max(0, Math.min(1, (r - innerCutoff * radius) / (radius - innerCutoff * radius)));
-      const c = new Color();
-      if (tNorm < 0.18) {
-        c.copy(cHot).lerp(cWarm, tNorm / 0.18);
-      } else if (tNorm < 0.55) {
-        c.copy(cWarm).lerp(cMid, (tNorm - 0.18) / (0.55 - 0.18));
-      } else if (tNorm < 0.85) {
-        c.copy(cMid).lerp(cOuter, (tNorm - 0.55) / (0.85 - 0.55));
-      } else {
-        c.copy(cOuter).lerp(cEdge, (tNorm - 0.85) / (1 - 0.85));
+        dummy.position.set(
+          cosLat * r2 * Math.cos(lon),
+          sinLat * r2,
+          cosLat * r2 * Math.sin(lon),
+        );
+        const s = 1 + Math.max(0, e) * 0.18 + (cosLat < 0.25 ? 0.1 : 0);
+        dummy.scale.setScalar(s);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        meshRef.current.setMatrixAt(i, dummy.matrix);
+        meshRef.current.setColorAt(i, biomeColor(lat, lon, tmp));
+        i++;
       }
-
-      // Sparse accent dusting: ~6% cyan, ~4% violet — keeps palette mostly blue
-      const roll = Math.random();
-      if (roll < 0.06) c.lerp(cAccentCyan, 0.45);
-      else if (roll < 0.10) c.lerp(cAccentViolet, 0.35);
-
-      const j = (Math.random() - 0.5) * 0.10;
-      c.r = Math.max(0, Math.min(1, c.r + j));
-      c.g = Math.max(0, Math.min(1, c.g + j * 0.7));
-      c.b = Math.max(0, Math.min(1, c.b + j * 0.5));
-
-      colors[i * 3 + 0] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
     }
-
-    const g = new BufferGeometry();
-    g.setAttribute('position', new BufferAttribute(positions, 3));
-    g.setAttribute('color', new BufferAttribute(colors, 3));
-    return g;
-  }, []);
+    meshRef.current.instanceMatrix.needsUpdate = true;
+    if (meshRef.current.instanceColor) {
+      meshRef.current.instanceColor.needsUpdate = true;
+    }
+  }, [rows, cols, radius]);
 
   useFrame((_, delta) => {
-    if (ref.current) ref.current.rotation.y += delta * 0.025;
+    if (groupRef.current) groupRef.current.rotation.y += delta * 0.06;
   });
 
   return (
-    <points ref={ref} geometry={geometry}>
-      <pointsMaterial
-        size={0.038}
-        sizeAttenuation
-        vertexColors
-        transparent
-        opacity={0.95}
-        depthWrite={false}
-        blending={AdditiveBlending}
-      />
-    </points>
-  );
-}
-
-// ─── Galactic core ───────────────────────────────────────────────────────────
-function GalacticCore() {
-  const coreRef = useRef<Mesh>(null);
-  const ringRef = useRef<Mesh>(null);
-  const haloRef = useRef<Mesh>(null);
-
-  useFrame(({ clock }) => {
-    const t = clock.elapsedTime;
-    if (coreRef.current) coreRef.current.scale.setScalar(1 + Math.sin(t * 0.55) * 0.04);
-    if (haloRef.current) {
-      const m = haloRef.current.material as { opacity?: number };
-      m.opacity = 0.10 + Math.sin(t * 0.32) * 0.025;
-    }
-    if (ringRef.current) ringRef.current.rotation.z = t * 0.12;
-  });
-
-  return (
-    <group>
+    <group ref={groupRef}>
+      {/* Atmospheric glow (two soft shells) */}
       <mesh>
-        <sphereGeometry args={[1.65, 24, 24]} />
-        <meshBasicMaterial
-          color={BRAND_COLORS.haloOuter}
-          transparent
-          opacity={0.045}
-          side={BackSide}
-          depthWrite={false}
-        />
-      </mesh>
-      <mesh ref={haloRef}>
-        <sphereGeometry args={[1.05, 24, 24]} />
+        <sphereGeometry args={[radius * 1.20, 28, 28]} />
         <meshBasicMaterial
           color={BRAND_COLORS.haloInner}
           transparent
-          opacity={0.10}
+          opacity={0.05}
           side={BackSide}
           depthWrite={false}
         />
       </mesh>
-      <mesh ref={ringRef} rotation={[Math.PI / 2.05, 0, 0]}>
-        <torusGeometry args={[0.78, 0.006, 10, 128]} />
-        <meshBasicMaterial color="#A8C8FF" transparent opacity={0.42} />
-      </mesh>
-      <mesh ref={coreRef}>
-        <sphereGeometry args={[0.42, 64, 64]} />
-        <meshPhysicalMaterial
-          color="#3B5FBF"
-          emissive={BRAND_COLORS.haloInner}
-          emissiveIntensity={2.2}
-          metalness={0.85}
-          roughness={0.05}
-          clearcoat={1}
-          clearcoatRoughness={0.04}
+      <mesh>
+        <sphereGeometry args={[radius * 1.07, 28, 28]} />
+        <meshBasicMaterial
+          color={BRAND_COLORS.starHalo}
+          transparent
+          opacity={0.09}
+          side={BackSide}
+          depthWrite={false}
         />
       </mesh>
+      <instancedMesh ref={meshRef} args={[undefined!, undefined!, count]}>
+        <boxGeometry args={[voxelSize, voxelSize, voxelSize]} />
+        <meshStandardMaterial metalness={0.05} roughness={0.85} />
+      </instancedMesh>
     </group>
   );
 }
 
-// ─── Three small moons orbiting the core ─────────────────────────────────────
-function OrbitingMoons() {
+// ─── Pixel cloud belt ────────────────────────────────────────────────────────
+function CloudBelt() {
+  const ref = useRef<InstancedMesh>(null);
+  const groupRef = useRef<Group>(null);
+  const { count, radius, voxelSize } = PIXEL_PARAMS.clouds;
+
+  const placements = useMemo(() => {
+    return Array.from({ length: count }, () => {
+      // Cluster clouds in latitudinal bands
+      const lat = (Math.random() - 0.5) * Math.PI * 0.9;
+      const lon = Math.random() * Math.PI * 2;
+      const dr  = (Math.random() - 0.5) * 0.06;
+      const s   = 0.6 + Math.random() * 0.7;
+      return { lat, lon, dr, s };
+    });
+  }, [count]);
+
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const dummy = new Object3D();
+    placements.forEach((p, i) => {
+      const r2 = radius + p.dr;
+      dummy.position.set(
+        Math.cos(p.lat) * r2 * Math.cos(p.lon),
+        Math.sin(p.lat) * r2,
+        Math.cos(p.lat) * r2 * Math.sin(p.lon),
+      );
+      dummy.scale.setScalar(p.s);
+      dummy.rotation.set(0, 0, 0);
+      dummy.updateMatrix();
+      ref.current!.setMatrixAt(i, dummy.matrix);
+    });
+    ref.current.instanceMatrix.needsUpdate = true;
+  }, [placements, radius]);
+
+  useFrame((_, delta) => {
+    if (groupRef.current) groupRef.current.rotation.y += delta * 0.10;
+  });
+
+  return (
+    <group ref={groupRef}>
+      <instancedMesh ref={ref} args={[undefined!, undefined!, count]}>
+        <boxGeometry args={[voxelSize, voxelSize, voxelSize]} />
+        <meshBasicMaterial
+          color={EARTH_PALETTE.ice}
+          transparent
+          opacity={0.55}
+          depthWrite={false}
+        />
+      </instancedMesh>
+    </group>
+  );
+}
+
+// ─── Pixel Moon (orbits the Earth) ───────────────────────────────────────────
+function PixelMoon() {
+  const orbitRef = useRef<Group>(null);
+  const meshRef = useRef<InstancedMesh>(null);
+  const { rows, cols, radius, voxelSize, orbit } = PIXEL_PARAMS.moon;
+  const count = rows * cols;
+
+  useLayoutEffect(() => {
+    if (!meshRef.current) return;
+    const dummy = new Object3D();
+    const surface = new Color('#9FBEFF');
+    const crater  = new Color('#3B5FBF');
+    let i = 0;
+    for (let r = 0; r < rows; r++) {
+      const lat = -Math.PI / 2 + ((r + 0.5) / rows) * Math.PI;
+      const cosLat = Math.cos(lat);
+      const sinLat = Math.sin(lat);
+      for (let c = 0; c < cols; c++) {
+        const lon = (c / cols) * Math.PI * 2;
+        dummy.position.set(
+          cosLat * radius * Math.cos(lon),
+          sinLat * radius,
+          cosLat * radius * Math.sin(lon),
+        );
+        dummy.scale.setScalar(1);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        meshRef.current.setMatrixAt(i, dummy.matrix);
+        const isCrater = Math.sin(lon * 5.1 + lat * 3.3) + Math.cos(lat * 4.2 - lon * 1.1) > 1.05;
+        meshRef.current.setColorAt(i, isCrater ? crater : surface);
+        i++;
+      }
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true;
+    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+  }, [rows, cols, radius]);
+
+  useFrame(({ clock }, delta) => {
+    if (!orbitRef.current) return;
+    const t = clock.elapsedTime * orbit.speed;
+    orbitRef.current.position.set(
+      Math.cos(t) * orbit.radius,
+      Math.sin(t * 0.6) * orbit.tilt,
+      Math.sin(t) * orbit.radius,
+    );
+    orbitRef.current.rotation.y += delta * 0.12;
+  });
+
+  return (
+    <group ref={orbitRef}>
+      <mesh>
+        <sphereGeometry args={[radius * 1.7, 14, 14]} />
+        <meshBasicMaterial
+          color={BRAND_COLORS.haloInner}
+          transparent
+          opacity={0.08}
+          side={BackSide}
+          depthWrite={false}
+        />
+      </mesh>
+      <instancedMesh ref={meshRef} args={[undefined!, undefined!, count]}>
+        <boxGeometry args={[voxelSize, voxelSize, voxelSize]} />
+        <meshStandardMaterial metalness={0.08} roughness={0.85} />
+      </instancedMesh>
+    </group>
+  );
+}
+
+// ─── Mandala ring (one of the concentric pixel rings) ───────────────────────
+type RingDef = (typeof PIXEL_PARAMS.mandala)[number];
+
+function MandalaRing({ ring, idx }: { ring: RingDef; idx: number }) {
+  const groupRef = useRef<Group>(null);
+  const meshRef = useRef<InstancedMesh>(null);
+  const { radius, count, voxelSize, color, sway } = ring;
+
+  useLayoutEffect(() => {
+    if (!meshRef.current) return;
+    const dummy = new Object3D();
+    const c = new Color(color);
+    const accent = new Color(BRAND_COLORS.haloInner);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const wobble = Math.sin(angle * 6 + idx) * sway * 0.05;
+      dummy.position.set(
+        Math.cos(angle) * (radius + wobble),
+        Math.sin(angle * 4 + idx * 0.5) * sway * 0.08,
+        Math.sin(angle) * (radius + wobble),
+      );
+      // Cardinal beats stand out — every Nth cube is brighter and bigger
+      const beat = i % 8 === 0;
+      const s = beat ? 1.6 : 0.85 + Math.sin(angle * 8 + idx) * 0.20;
+      dummy.scale.setScalar(s);
+      dummy.rotation.set(angle * 0.5, angle, idx * 0.4);
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(i, dummy.matrix);
+      meshRef.current.setColorAt(i, beat ? accent : c);
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true;
+    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+  }, [radius, count, color, idx, sway]);
+
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+    const dir = idx % 2 === 0 ? 1 : -1;
+    groupRef.current.rotation.y += delta * 0.04 * dir * (1 + idx * 0.18);
+  });
+
+  return (
+    <group ref={groupRef} rotation={[Math.PI * 0.5 + idx * 0.04, idx * 0.7, 0]}>
+      <instancedMesh ref={meshRef} args={[undefined!, undefined!, count]}>
+        <boxGeometry args={[voxelSize, voxelSize, voxelSize]} />
+        <meshStandardMaterial
+          metalness={0.45}
+          roughness={0.35}
+          emissive={color}
+          emissiveIntensity={0.55}
+        />
+      </instancedMesh>
+    </group>
+  );
+}
+
+function PixelMandala() {
   const ref = useRef<Group>(null);
   useFrame((_, delta) => {
-    if (ref.current) ref.current.rotation.y += delta * 0.14;
+    if (ref.current) ref.current.rotation.y += delta * 0.012;
   });
-  const moons: number[] = [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3];
   return (
     <group ref={ref}>
-      {moons.map((angle, i) => (
-        <mesh
-          key={i}
-          position={[Math.cos(angle) * 0.96, 0, Math.sin(angle) * 0.96]}
-        >
-          <sphereGeometry args={[0.04, 14, 14]} />
-          <meshStandardMaterial
-            color={BRAND_COLORS.star}
-            emissive={BRAND_COLORS.haloInner}
-            emissiveIntensity={2.4}
-            metalness={0.4}
-            roughness={0.1}
-          />
-        </mesh>
+      {PIXEL_PARAMS.mandala.map((ring, i) => (
+        <MandalaRing key={i} ring={ring} idx={i} />
       ))}
     </group>
   );
 }
 
-// ─── Concentric meditative rings around the core ─────────────────────────────
-function ConcentricRings() {
-  const radii = [1.45, 2.15, 2.95, 3.85, 4.7];
-  const rings = useMemo(() => radii.map((r) => ringPts(r)), []);
-  return (
-    <group>
-      {rings.map((pts, i) => (
-        <Line
-          key={i}
-          points={pts}
-          color={BRAND_COLORS.haloOuter}
-          lineWidth={0.35}
-          transparent
-          opacity={0.05 + i * 0.012}
-        />
-      ))}
-    </group>
-  );
-}
+// ─── Floating petals (drifting voxel motes) ─────────────────────────────────
+function FloatingPetals() {
+  const ref = useRef<InstancedMesh>(null);
+  const { count, voxelSize, fieldInner, fieldOuter } = PIXEL_PARAMS.petals;
 
-// ─── Faint data tendrils from core to each featured star ─────────────────────
-function DataTendrils() {
-  return (
-    <group>
-      {FEATURED_STARS.map((s, i) => {
-        const { x, z } = armPoint(s.arm, s.t);
-        const y = s.yLift ?? 0;
-        return (
-          <Line
-            key={i}
-            points={[[0, 0, 0], [x, y, z]]}
-            color={BRAND_COLORS.armMid}
-            lineWidth={0.35}
-            transparent
-            opacity={0.075}
-          />
-        );
-      })}
-    </group>
-  );
-}
+  const data = useMemo(() => {
+    const cWarm = new Color(BRAND_COLORS.haloInner);
+    const cCool = new Color(BRAND_COLORS.starHalo);
+    const cIce  = new Color('#DCEBFF');
+    return Array.from({ length: count }, () => {
+      const r = fieldInner + Math.random() * (fieldOuter - fieldInner);
+      const theta = Math.random() * Math.PI * 2;
+      const phi = (Math.random() - 0.5) * Math.PI * 0.7;
+      const speed = 0.04 + Math.random() * 0.10;
+      const phase = Math.random() * Math.PI * 2;
+      const bobAmp = 0.08 + Math.random() * 0.32;
+      const baseScale = 0.55 + Math.random() * 0.7;
+      const roll = Math.random();
+      const color = roll < 0.55 ? cWarm : roll < 0.85 ? cCool : cIce;
+      return { r, theta, phi, speed, phase, bobAmp, baseScale, color };
+    });
+  }, [count, fieldInner, fieldOuter]);
 
-// ─── Foreground sparkle motes (close to camera) ──────────────────────────────
-function ForegroundMotes() {
-  const ref = useRef<Points>(null);
-
-  const geo = useMemo(() => {
-    const N = 520;
-    const positions = new Float32Array(N * 3);
-    const colors = new Float32Array(N * 3);
-    const cMid  = new Color(BRAND_COLORS.armMid);
-    const cWarm = new Color(BRAND_COLORS.coreWarm);
-
-    for (let i = 0; i < N; i++) {
-      const r = 1.2 + Math.random() * 7.5;
-      const angle = Math.random() * Math.PI * 2;
-      positions[i * 3 + 0] = Math.cos(angle) * r * (0.55 + Math.random() * 0.6);
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 3.5;
-      positions[i * 3 + 2] = Math.sin(angle) * r * (0.55 + Math.random() * 0.6);
-
-      const c = new Color().copy(cMid).lerp(cWarm, Math.random() * 0.6);
-      colors[i * 3 + 0] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
-    }
-
-    const g = new BufferGeometry();
-    g.setAttribute('position', new BufferAttribute(positions, 3));
-    g.setAttribute('color', new BufferAttribute(colors, 3));
-    return g;
-  }, []);
-
-  useFrame((_, delta) => {
-    if (ref.current) ref.current.rotation.y -= delta * 0.012;
-  });
-
-  return (
-    <points ref={ref} geometry={geo}>
-      <pointsMaterial
-        size={0.024}
-        sizeAttenuation
-        vertexColors
-        transparent
-        opacity={0.55}
-        depthWrite={false}
-        blending={AdditiveBlending}
-      />
-    </points>
-  );
-}
-
-// ─── Dust shells (slow breathing nebulae) ────────────────────────────────────
-function DustShells() {
-  const a = useRef<Mesh>(null);
-  const b = useRef<Mesh>(null);
-  const c = useRef<Mesh>(null);
-
-  useFrame(({ clock }) => {
-    const t = clock.elapsedTime;
-    if (a.current) {
-      const m = a.current.material as { opacity?: number };
-      m.opacity = 0.022 + Math.sin(t * 0.18) * 0.008;
-      a.current.rotation.y = t * 0.015;
-    }
-    if (b.current) {
-      const m = b.current.material as { opacity?: number };
-      m.opacity = 0.018 + Math.cos(t * 0.13) * 0.006;
-      b.current.rotation.y = -t * 0.011;
-    }
-    if (c.current) {
-      const m = c.current.material as { opacity?: number };
-      m.opacity = 0.014 + Math.sin(t * 0.09 + 1.2) * 0.005;
-      c.current.rotation.y = t * 0.008;
-    }
-  });
-
-  return (
-    <group>
-      <mesh ref={a} scale={[1.18, 0.42, 1.18]}>
-        <sphereGeometry args={[5.4, 24, 24]} />
-        <meshBasicMaterial
-          color={BRAND_COLORS.dustIndigo}
-          transparent
-          opacity={0.022}
-          side={BackSide}
-          depthWrite={false}
-        />
-      </mesh>
-      <mesh ref={b} scale={[1.05, 0.32, 1.05]}>
-        <sphereGeometry args={[3.9, 24, 24]} />
-        <meshBasicMaterial
-          color={BRAND_COLORS.dustViolet}
-          transparent
-          opacity={0.018}
-          side={BackSide}
-          depthWrite={false}
-        />
-      </mesh>
-      <mesh ref={c} scale={[0.95, 0.28, 0.95]}>
-        <sphereGeometry args={[2.6, 24, 24]} />
-        <meshBasicMaterial
-          color="#1FB8E3"
-          transparent
-          opacity={0.014}
-          side={BackSide}
-          depthWrite={false}
-        />
-      </mesh>
-    </group>
-  );
-}
-
-// ─── Featured star (labeled domain) ──────────────────────────────────────────
-function FeaturedStarMark({ star, index }: { star: FeaturedStar; index: number }) {
-  const ref = useRef<Mesh>(null);
-  const phase = (index / FEATURED_STARS.length) * Math.PI * 2;
-  const { x, z } = armPoint(star.arm, star.t);
-  const y = star.yLift ?? 0;
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    data.forEach((d, i) => {
+      ref.current!.setColorAt(i, d.color);
+    });
+    if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
+  }, [data]);
 
   useFrame(({ clock }) => {
     if (!ref.current) return;
-    const s = 1 + Math.sin(clock.elapsedTime * 0.7 + phase) * 0.14;
-    ref.current.scale.setScalar(s);
+    const dummy = new Object3D();
+    const t = clock.elapsedTime;
+    data.forEach((d, i) => {
+      const theta = d.theta + t * d.speed * 0.05;
+      const phi = d.phi + Math.sin(t * 0.18 + d.phase) * 0.04;
+      const bob = Math.sin(t * 0.55 + d.phase) * d.bobAmp;
+      dummy.position.set(
+        Math.cos(phi) * d.r * Math.cos(theta),
+        Math.sin(phi) * d.r + bob,
+        Math.cos(phi) * d.r * Math.sin(theta),
+      );
+      const pulse = d.baseScale * (0.85 + Math.sin(t * 0.9 + d.phase) * 0.25);
+      dummy.scale.setScalar(pulse);
+      dummy.rotation.set(t * 0.3 + d.phase, t * 0.25, t * 0.2 + d.phase);
+      dummy.updateMatrix();
+      ref.current!.setMatrixAt(i, dummy.matrix);
+    });
+    ref.current.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh ref={ref} args={[undefined!, undefined!, count]}>
+      <boxGeometry args={[voxelSize, voxelSize, voxelSize]} />
+      <meshBasicMaterial
+        transparent
+        opacity={0.78}
+        blending={AdditiveBlending}
+        depthWrite={false}
+      />
+    </instancedMesh>
+  );
+}
+
+// ─── Pixel star field (deep background) ─────────────────────────────────────
+function PixelStarfield() {
+  const ref = useRef<InstancedMesh>(null);
+  const { count, fieldRadius, voxelSize } = PIXEL_PARAMS.stars;
+
+  useLayoutEffect(() => {
+    if (!ref.current) return;
+    const dummy = new Object3D();
+    const palette = [
+      new Color('#F0F4FF'),
+      new Color('#DCEBFF'),
+      new Color('#93C5FD'),
+      new Color('#4D8FFF'),
+      new Color('#7FE7FF'),
+      new Color('#7C5CFF'),
+    ];
+    for (let i = 0; i < count; i++) {
+      // Uniform direction on sphere
+      const u = Math.random() * 2 - 1;
+      const phi = Math.acos(u);
+      const theta = Math.random() * Math.PI * 2;
+      const r = fieldRadius * (0.65 + Math.random() * 0.35);
+      dummy.position.set(
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.cos(phi),
+        r * Math.sin(phi) * Math.sin(theta),
+      );
+      // Heavy-tailed star sizes — most tiny, a few bright
+      const s = 0.35 + Math.pow(Math.random(), 4) * 4.0;
+      dummy.scale.setScalar(s);
+      dummy.rotation.set(
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+        Math.random() * Math.PI,
+      );
+      dummy.updateMatrix();
+      ref.current.setMatrixAt(i, dummy.matrix);
+      const col = palette[Math.floor(Math.pow(Math.random(), 1.4) * palette.length)];
+      ref.current.setColorAt(i, col);
+    }
+    ref.current.instanceMatrix.needsUpdate = true;
+    if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
+  }, [count, fieldRadius]);
+
+  return (
+    <instancedMesh ref={ref} args={[undefined!, undefined!, count]}>
+      <boxGeometry args={[voxelSize, voxelSize, voxelSize]} />
+      <meshBasicMaterial />
+    </instancedMesh>
+  );
+}
+
+// ─── Featured-star markers (labeled domain pixel cubes) ─────────────────────
+function FeaturedStarMark({
+  star, index, total,
+}: { star: FeaturedStar; index: number; total: number }) {
+  const cubeRef = useRef<Mesh>(null);
+  const haloRef = useRef<Mesh>(null);
+  const { ringRadius, yLiftScale } = PIXEL_PARAMS.featured;
+  const phase = (index / total) * Math.PI * 2;
+  const angle = phase;
+  const x = Math.cos(angle) * ringRadius;
+  const z = Math.sin(angle) * ringRadius;
+  const y = (star.yLift ?? 0) * yLiftScale;
+
+  useFrame(({ clock }) => {
+    const t = clock.elapsedTime;
+    if (cubeRef.current) {
+      cubeRef.current.rotation.x = t * 0.22 + phase;
+      cubeRef.current.rotation.y = t * 0.28 + phase * 0.5;
+      cubeRef.current.scale.setScalar(1 + Math.sin(t * 0.7 + phase) * 0.16);
+    }
+    if (haloRef.current) {
+      const m = haloRef.current.material as { opacity?: number };
+      m.opacity = 0.10 + Math.sin(t * 0.5 + phase) * 0.04;
+    }
   });
 
   return (
     <group position={[x, y, z]}>
-      <mesh>
-        <sphereGeometry args={[0.28, 16, 16]} />
+      <mesh ref={haloRef}>
+        <sphereGeometry args={[0.22, 12, 12]} />
         <meshBasicMaterial
           color={BRAND_COLORS.starHalo}
           transparent
@@ -391,91 +471,100 @@ function FeaturedStarMark({ star, index }: { star: FeaturedStar; index: number }
           depthWrite={false}
         />
       </mesh>
-      <mesh ref={ref}>
-        <sphereGeometry args={[0.085, 24, 24]} />
+      <mesh ref={cubeRef}>
+        <boxGeometry args={[0.16, 0.16, 0.16]} />
         <meshStandardMaterial
           color={BRAND_COLORS.star}
           emissive={BRAND_COLORS.haloInner}
-          emissiveIntensity={3.4}
+          emissiveIntensity={0.85}
           metalness={0.4}
-          roughness={0.08}
+          roughness={0.22}
         />
       </mesh>
-      <Billboard follow lockX={false} lockY={false} lockZ={false}>
-        <Text
-          position={[0, 0.34, 0]}
-          fontSize={0.16}
-          color={BRAND_COLORS.label}
-          anchorX="center"
-          anchorY="middle"
-          outlineWidth={0.011}
-          outlineColor={BRAND_COLORS.labelOutline}
-        >
-          {star.label}
-        </Text>
-      </Billboard>
+      <Html
+        center
+        position={[0, 0.42, 0]}
+        zIndexRange={[10, 0]}
+        style={{
+          pointerEvents: 'none',
+          color: BRAND_COLORS.label,
+          fontSize: '10px',
+          fontWeight: 600,
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+          textShadow:
+            '0 0 6px #020916, 0 0 2px #020916, 0 1px 2px rgba(0,0,0,0.9)',
+          userSelect: 'none',
+        }}
+      >
+        {star.label}
+      </Html>
     </group>
   );
 }
 
-// ─── Scene ───────────────────────────────────────────────────────────────────
+// ─── Scene ──────────────────────────────────────────────────────────────────
 function Scene() {
   const groupRef = useRef<Group>(null);
   const { pointer } = useThree();
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-    groupRef.current.rotation.y += delta * 0.008;
-    const targetX = 0.46 + (-pointer.y * 0.05);
-    const targetZ = pointer.x * 0.035;
+    groupRef.current.rotation.y += delta * 0.006;
+    const targetX = 0.22 + (-pointer.y * 0.04);
+    const targetZ = pointer.x * 0.03;
     groupRef.current.rotation.x += (targetX - groupRef.current.rotation.x) * 0.022;
     groupRef.current.rotation.z += (targetZ - groupRef.current.rotation.z) * 0.022;
   });
 
   return (
     <group ref={groupRef}>
-      <DustShells />
-      <ConcentricRings />
-      <DataTendrils />
-      <GalaxyDisk />
-      <ForegroundMotes />
-      <GalacticCore />
-      <OrbitingMoons />
-
+      <PixelStarfield />
+      <FloatingPetals />
+      <PixelMandala />
+      <VoxelEarth />
+      <CloudBelt />
+      <PixelMoon />
       {FEATURED_STARS.map((s, i) => (
-        <FeaturedStarMark key={s.label} star={s} index={i} />
+        <FeaturedStarMark
+          key={s.label}
+          star={s}
+          index={i}
+          total={FEATURED_STARS.length}
+        />
       ))}
-
-      <Sparkles count={32} scale={9.5} size={0.55} speed={0.04} opacity={0.07} color={BRAND_COLORS.haloInner} />
     </group>
   );
 }
 
-// ─── Canvas ──────────────────────────────────────────────────────────────────
+// ─── Canvas ─────────────────────────────────────────────────────────────────
 export default function GalaxyScene() {
   return (
     <Canvas
-      camera={{ position: [0, 4.6, 11], fov: 50 }}
+      camera={{ position: [0, 3.2, 8.6], fov: 48 }}
       dpr={[1, 2]}
       frameloop="always"
-      gl={{ antialias: true, alpha: true }}
+      // Disable AA — Pixelation post-effect wants crisp blocks, not soft edges.
+      gl={{ antialias: false, alpha: true }}
       style={{ background: 'transparent', width: '100%', height: '100%' }}
     >
-      <ambientLight intensity={0.22} />
-      <pointLight position={[3, 7, 4]}    intensity={2.0} color={BRAND_COLORS.haloInner} />
-      <pointLight position={[-5, -2, -3]} intensity={0.5} color={BRAND_COLORS.armOuter} />
-      <pointLight position={[0, -4, 3]}   intensity={0.6} color={BRAND_COLORS.armMid} />
+      <ambientLight intensity={0.55} />
+      <directionalLight position={[5, 6, 5]}    intensity={1.2}  color={'#DCEBFF'} />
+      <directionalLight position={[-4, 2, -3]}  intensity={0.45} color={BRAND_COLORS.armOuter} />
+      <pointLight       position={[0, 0, 0]}    intensity={0.9}  color={BRAND_COLORS.haloInner} />
 
       <Suspense fallback={null}>
-        <Stars radius={80} depth={40} count={2200} factor={3} saturation={0} fade speed={0.3} />
         <Scene />
         <EffectComposer>
           <Bloom
-            intensity={0.92}
-            luminanceThreshold={0.30}
-            luminanceSmoothing={0.84}
+            intensity={0.42}
+            luminanceThreshold={0.72}
+            luminanceSmoothing={0.5}
             mipmapBlur
           />
+          <Pixelation granularity={5} />
         </EffectComposer>
       </Suspense>
     </Canvas>
