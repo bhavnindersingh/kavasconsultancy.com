@@ -1,8 +1,8 @@
 'use client';
-import { Suspense, useRef, useMemo, useLayoutEffect } from 'react';
+import { Suspense, useRef, useMemo, useLayoutEffect, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
-import { EffectComposer, Bloom, Pixelation } from '@react-three/postprocessing';
+import { Html, useGLTF } from '@react-three/drei';
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import {
   AdditiveBlending,
   BackSide,
@@ -14,90 +14,56 @@ import {
 } from 'three';
 import {
   PIXEL_PARAMS,
-  EARTH_PALETTE,
   BRAND_COLORS,
   FEATURED_STARS,
   type FeaturedStar,
 } from '@/lib/galaxy-config';
 
-// ─── Continent generator ────────────────────────────────────────────────────
-// Layered sines stand in for value-noise — gives blob-shaped pseudo-continents
-// without pulling in a noise library.
-function elevationAt(lat: number, lon: number) {
-  const f1 = Math.sin(lon * 1.4 + lat * 0.9) * 0.70;
-  const f2 = Math.sin(lon * 2.7 - lat * 1.6) * 0.50;
-  const f3 = Math.sin(lat * 3.2 + lon * 0.4) * 0.55;
-  const f4 = Math.cos(lon * 0.6 + lat * 2.0) * 0.40;
-  return f1 + f2 + f3 + f4 - Math.abs(lat) * 0.18;
-}
+const M = {
+  earth:  '/models/space-kit/earth.gltf',
+  moon:   '/models/space-kit/moon.gltf',
+  green:  '/models/space-kit/planet-green.gltf',
+  violet: '/models/space-kit/planet-violet.gltf',
+  rock1:  '/models/space-kit/rock-1.gltf',
+  rock2:  '/models/space-kit/rock-2.gltf',
+  rock3:  '/models/space-kit/rock-3.gltf',
+};
 
-function biomeColor(lat: number, lon: number, target: Color) {
-  const polar = Math.abs(lat);
-  if (polar > 1.34) return target.set(EARTH_PALETTE.ice);
-  if (polar > 1.20) {
-    const noisy = Math.sin(lon * 5 + lat * 2.4) + Math.cos(lat * 6.1) * 0.5;
-    return target.set(noisy > 0 ? EARTH_PALETTE.ice : EARTH_PALETTE.tundra);
-  }
-  const e = elevationAt(lat, lon);
-  if (e >  1.08) return target.set(EARTH_PALETTE.peak);
-  if (e >  0.55) return target.set(EARTH_PALETTE.highland);
-  if (e >  0.10) return target.set(EARTH_PALETTE.lowland);
-  if (e > -0.05) return target.set(EARTH_PALETTE.coast);
-  if (e > -0.55) return target.set(EARTH_PALETTE.shallow);
-  return target.set(EARTH_PALETTE.deep);
-}
+useGLTF.preload(M.earth);
+useGLTF.preload(M.moon);
+useGLTF.preload(M.green);
+useGLTF.preload(M.violet);
+useGLTF.preload(M.rock1);
+useGLTF.preload(M.rock2);
+useGLTF.preload(M.rock3);
 
-// ─── Voxel Earth ─────────────────────────────────────────────────────────────
-function VoxelEarth() {
-  const groupRef = useRef<Group>(null);
-  const meshRef = useRef<InstancedMesh>(null);
-  const { rows, cols, radius, voxelSize } = PIXEL_PARAMS.earth;
-  const count = rows * cols;
-
-  useLayoutEffect(() => {
-    if (!meshRef.current) return;
-    const dummy = new Object3D();
-    const tmp = new Color();
-    let i = 0;
-    for (let r = 0; r < rows; r++) {
-      const lat = -Math.PI / 2 + ((r + 0.5) / rows) * Math.PI;
-      const cosLat = Math.cos(lat);
-      const sinLat = Math.sin(lat);
-      for (let c = 0; c < cols; c++) {
-        const lon = (c / cols) * Math.PI * 2;
-        const e = elevationAt(lat, lon);
-        const bump = Math.max(0, e) * 0.05;
-        const r2 = radius + bump;
-
-        dummy.position.set(
-          cosLat * r2 * Math.cos(lon),
-          sinLat * r2,
-          cosLat * r2 * Math.sin(lon),
-        );
-        const s = 1 + Math.max(0, e) * 0.18 + (cosLat < 0.25 ? 0.1 : 0);
-        dummy.scale.setScalar(s);
-        dummy.rotation.set(0, 0, 0);
-        dummy.updateMatrix();
-        meshRef.current.setMatrixAt(i, dummy.matrix);
-        meshRef.current.setColorAt(i, biomeColor(lat, lon, tmp));
-        i++;
-      }
+function applyShadows(scene: Object3D) {
+  scene.traverse((c) => {
+    const m = c as Mesh;
+    if (m.isMesh) {
+      m.castShadow = true;
+      m.receiveShadow = true;
     }
-    meshRef.current.instanceMatrix.needsUpdate = true;
-    if (meshRef.current.instanceColor) {
-      meshRef.current.instanceColor.needsUpdate = true;
-    }
-  }, [rows, cols, radius]);
-
-  useFrame((_, delta) => {
-    if (groupRef.current) groupRef.current.rotation.y += delta * 0.06;
   });
+}
+
+// ─── Earth (centerpiece) ─────────────────────────────────────────────────
+function Earth() {
+  const { scene } = useGLTF(M.earth);
+  const cloned = useMemo(() => scene.clone(true), [scene]);
+  const ref = useRef<Group>(null);
+
+  useEffect(() => { applyShadows(cloned); }, [cloned]);
+  useFrame((_, dt) => { if (ref.current) ref.current.rotation.y += dt * 0.07; });
 
   return (
-    <group ref={groupRef}>
-      {/* Atmospheric glow (two soft shells) */}
+    <group position={[0, 0, 0]} rotation={[0, 0, 0.41]}>
+      <group ref={ref} scale={0.7}>
+        <primitive object={cloned} />
+      </group>
+      {/* Soft atmosphere shells */}
       <mesh>
-        <sphereGeometry args={[radius * 1.20, 28, 28]} />
+        <sphereGeometry args={[1.78, 32, 32]} />
         <meshBasicMaterial
           color={BRAND_COLORS.haloInner}
           transparent
@@ -107,146 +73,113 @@ function VoxelEarth() {
         />
       </mesh>
       <mesh>
-        <sphereGeometry args={[radius * 1.07, 28, 28]} />
+        <sphereGeometry args={[1.55, 32, 32]} />
         <meshBasicMaterial
           color={BRAND_COLORS.starHalo}
           transparent
-          opacity={0.09}
+          opacity={0.07}
           side={BackSide}
           depthWrite={false}
         />
       </mesh>
-      <instancedMesh ref={meshRef} args={[undefined!, undefined!, count]}>
-        <boxGeometry args={[voxelSize, voxelSize, voxelSize]} />
-        <meshStandardMaterial metalness={0.05} roughness={0.85} />
-      </instancedMesh>
     </group>
   );
 }
 
-// ─── Pixel cloud belt ────────────────────────────────────────────────────────
-function CloudBelt() {
-  const ref = useRef<InstancedMesh>(null);
-  const groupRef = useRef<Group>(null);
-  const { count, radius, voxelSize } = PIXEL_PARAMS.clouds;
-
-  const placements = useMemo(() => {
-    return Array.from({ length: count }, () => {
-      // Cluster clouds in latitudinal bands
-      const lat = (Math.random() - 0.5) * Math.PI * 0.9;
-      const lon = Math.random() * Math.PI * 2;
-      const dr  = (Math.random() - 0.5) * 0.06;
-      const s   = 0.6 + Math.random() * 0.7;
-      return { lat, lon, dr, s };
-    });
-  }, [count]);
-
-  useLayoutEffect(() => {
-    if (!ref.current) return;
-    const dummy = new Object3D();
-    placements.forEach((p, i) => {
-      const r2 = radius + p.dr;
-      dummy.position.set(
-        Math.cos(p.lat) * r2 * Math.cos(p.lon),
-        Math.sin(p.lat) * r2,
-        Math.cos(p.lat) * r2 * Math.sin(p.lon),
-      );
-      dummy.scale.setScalar(p.s);
-      dummy.rotation.set(0, 0, 0);
-      dummy.updateMatrix();
-      ref.current!.setMatrixAt(i, dummy.matrix);
-    });
-    ref.current.instanceMatrix.needsUpdate = true;
-  }, [placements, radius]);
-
-  useFrame((_, delta) => {
-    if (groupRef.current) groupRef.current.rotation.y += delta * 0.10;
-  });
-
-  return (
-    <group ref={groupRef}>
-      <instancedMesh ref={ref} args={[undefined!, undefined!, count]}>
-        <boxGeometry args={[voxelSize, voxelSize, voxelSize]} />
-        <meshBasicMaterial
-          color={EARTH_PALETTE.ice}
-          transparent
-          opacity={0.55}
-          depthWrite={false}
-        />
-      </instancedMesh>
-    </group>
-  );
-}
-
-// ─── Pixel Moon (orbits the Earth) ───────────────────────────────────────────
-function PixelMoon() {
+// ─── Moon (orbits Earth) ─────────────────────────────────────────────────
+function Moon() {
+  const { scene } = useGLTF(M.moon);
+  const cloned = useMemo(() => scene.clone(true), [scene]);
   const orbitRef = useRef<Group>(null);
-  const meshRef = useRef<InstancedMesh>(null);
-  const { rows, cols, radius, voxelSize, orbit } = PIXEL_PARAMS.moon;
-  const count = rows * cols;
+  const spinRef = useRef<Group>(null);
 
-  useLayoutEffect(() => {
-    if (!meshRef.current) return;
-    const dummy = new Object3D();
-    const surface = new Color('#9FBEFF');
-    const crater  = new Color('#3B5FBF');
-    let i = 0;
-    for (let r = 0; r < rows; r++) {
-      const lat = -Math.PI / 2 + ((r + 0.5) / rows) * Math.PI;
-      const cosLat = Math.cos(lat);
-      const sinLat = Math.sin(lat);
-      for (let c = 0; c < cols; c++) {
-        const lon = (c / cols) * Math.PI * 2;
-        dummy.position.set(
-          cosLat * radius * Math.cos(lon),
-          sinLat * radius,
-          cosLat * radius * Math.sin(lon),
-        );
-        dummy.scale.setScalar(1);
-        dummy.rotation.set(0, 0, 0);
-        dummy.updateMatrix();
-        meshRef.current.setMatrixAt(i, dummy.matrix);
-        const isCrater = Math.sin(lon * 5.1 + lat * 3.3) + Math.cos(lat * 4.2 - lon * 1.1) > 1.05;
-        meshRef.current.setColorAt(i, isCrater ? crater : surface);
-        i++;
-      }
-    }
-    meshRef.current.instanceMatrix.needsUpdate = true;
-    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
-  }, [rows, cols, radius]);
+  useEffect(() => { applyShadows(cloned); }, [cloned]);
 
-  useFrame(({ clock }, delta) => {
+  useFrame(({ clock }, dt) => {
     if (!orbitRef.current) return;
-    const t = clock.elapsedTime * orbit.speed;
+    const t = clock.elapsedTime * 0.18;
     orbitRef.current.position.set(
-      Math.cos(t) * orbit.radius,
-      Math.sin(t * 0.6) * orbit.tilt,
-      Math.sin(t) * orbit.radius,
+      Math.cos(t) * 3.0,
+      Math.sin(t * 0.6) * 0.5,
+      Math.sin(t) * 3.0,
     );
-    orbitRef.current.rotation.y += delta * 0.12;
+    if (spinRef.current) spinRef.current.rotation.y += dt * 0.12;
   });
 
   return (
     <group ref={orbitRef}>
-      <mesh>
-        <sphereGeometry args={[radius * 1.7, 14, 14]} />
-        <meshBasicMaterial
-          color={BRAND_COLORS.haloInner}
-          transparent
-          opacity={0.08}
-          side={BackSide}
-          depthWrite={false}
-        />
-      </mesh>
-      <instancedMesh ref={meshRef} args={[undefined!, undefined!, count]}>
-        <boxGeometry args={[voxelSize, voxelSize, voxelSize]} />
-        <meshStandardMaterial metalness={0.08} roughness={0.85} />
-      </instancedMesh>
+      <group ref={spinRef} scale={0.18}>
+        <primitive object={cloned} />
+      </group>
     </group>
   );
 }
 
-// ─── Mandala ring (one of the concentric pixel rings) ───────────────────────
+// ─── Distant background planet ──────────────────────────────────────────
+function DistantPlanet({
+  url, position, scale, spin = 0.04,
+}: { url: string; position: [number, number, number]; scale: number; spin?: number }) {
+  const { scene } = useGLTF(url);
+  const cloned = useMemo(() => scene.clone(true), [scene]);
+  const ref = useRef<Group>(null);
+
+  useEffect(() => { applyShadows(cloned); }, [cloned]);
+  useFrame((_, dt) => { if (ref.current) ref.current.rotation.y += dt * spin; });
+
+  return (
+    <group position={position}>
+      <group ref={ref} scale={scale}>
+        <primitive object={cloned} />
+      </group>
+    </group>
+  );
+}
+
+// ─── Drifting asteroid ──────────────────────────────────────────────────
+function Asteroid({
+  url, orbitRadius, orbitSpeed, yLift, phase, scale, tumble,
+}: {
+  url: string;
+  orbitRadius: number;
+  orbitSpeed: number;
+  yLift: number;
+  phase: number;
+  scale: number;
+  tumble: [number, number, number];
+}) {
+  const { scene } = useGLTF(url);
+  const cloned = useMemo(() => scene.clone(true), [scene]);
+  const orbitRef = useRef<Group>(null);
+  const tumbleRef = useRef<Group>(null);
+
+  useEffect(() => { applyShadows(cloned); }, [cloned]);
+
+  useFrame(({ clock }, dt) => {
+    const t = clock.elapsedTime * orbitSpeed + phase;
+    if (orbitRef.current) {
+      orbitRef.current.position.set(
+        Math.cos(t) * orbitRadius,
+        yLift + Math.sin(t * 0.7 + phase) * 0.3,
+        Math.sin(t) * orbitRadius,
+      );
+    }
+    if (tumbleRef.current) {
+      tumbleRef.current.rotation.x += dt * tumble[0];
+      tumbleRef.current.rotation.y += dt * tumble[1];
+      tumbleRef.current.rotation.z += dt * tumble[2];
+    }
+  });
+
+  return (
+    <group ref={orbitRef}>
+      <group ref={tumbleRef} scale={scale}>
+        <primitive object={cloned} />
+      </group>
+    </group>
+  );
+}
+
+// ─── Mandala ring ───────────────────────────────────────────────────────
 type RingDef = (typeof PIXEL_PARAMS.mandala)[number];
 
 function MandalaRing({ ring, idx }: { ring: RingDef; idx: number }) {
@@ -267,7 +200,6 @@ function MandalaRing({ ring, idx }: { ring: RingDef; idx: number }) {
         Math.sin(angle * 4 + idx * 0.5) * sway * 0.08,
         Math.sin(angle) * (radius + wobble),
       );
-      // Cardinal beats stand out — every Nth cube is brighter and bigger
       const beat = i % 8 === 0;
       const s = beat ? 1.6 : 0.85 + Math.sin(angle * 8 + idx) * 0.20;
       dummy.scale.setScalar(s);
@@ -315,7 +247,7 @@ function PixelMandala() {
   );
 }
 
-// ─── Floating petals (drifting voxel motes) ─────────────────────────────────
+// ─── Floating petals ─────────────────────────────────────────────────────
 function FloatingPetals() {
   const ref = useRef<InstancedMesh>(null);
   const { count, voxelSize, fieldInner, fieldOuter } = PIXEL_PARAMS.petals;
@@ -340,9 +272,7 @@ function FloatingPetals() {
 
   useLayoutEffect(() => {
     if (!ref.current) return;
-    data.forEach((d, i) => {
-      ref.current!.setColorAt(i, d.color);
-    });
+    data.forEach((d, i) => { ref.current!.setColorAt(i, d.color); });
     if (ref.current.instanceColor) ref.current.instanceColor.needsUpdate = true;
   }, [data]);
 
@@ -381,7 +311,7 @@ function FloatingPetals() {
   );
 }
 
-// ─── Pixel star field (deep background) ─────────────────────────────────────
+// ─── Pixel star field (background) ──────────────────────────────────────
 function PixelStarfield() {
   const ref = useRef<InstancedMesh>(null);
   const { count, fieldRadius, voxelSize } = PIXEL_PARAMS.stars;
@@ -398,7 +328,6 @@ function PixelStarfield() {
       new Color('#7C5CFF'),
     ];
     for (let i = 0; i < count; i++) {
-      // Uniform direction on sphere
       const u = Math.random() * 2 - 1;
       const phi = Math.acos(u);
       const theta = Math.random() * Math.PI * 2;
@@ -408,7 +337,6 @@ function PixelStarfield() {
         r * Math.cos(phi),
         r * Math.sin(phi) * Math.sin(theta),
       );
-      // Heavy-tailed star sizes — most tiny, a few bright
       const s = 0.35 + Math.pow(Math.random(), 4) * 4.0;
       dummy.scale.setScalar(s);
       dummy.rotation.set(
@@ -433,7 +361,7 @@ function PixelStarfield() {
   );
 }
 
-// ─── Featured-star markers (labeled domain pixel cubes) ─────────────────────
+// ─── Featured-star markers (with HTML labels) ───────────────────────────
 function FeaturedStarMark({
   star, index, total,
 }: { star: FeaturedStar; index: number; total: number }) {
@@ -441,9 +369,8 @@ function FeaturedStarMark({
   const haloRef = useRef<Mesh>(null);
   const { ringRadius, yLiftScale } = PIXEL_PARAMS.featured;
   const phase = (index / total) * Math.PI * 2;
-  const angle = phase;
-  const x = Math.cos(angle) * ringRadius;
-  const z = Math.sin(angle) * ringRadius;
+  const x = Math.cos(phase) * ringRadius;
+  const z = Math.sin(phase) * ringRadius;
   const y = (star.yLift ?? 0) * yLiftScale;
 
   useFrame(({ clock }) => {
@@ -505,15 +432,15 @@ function FeaturedStarMark({
   );
 }
 
-// ─── Scene ──────────────────────────────────────────────────────────────────
+// ─── Scene ──────────────────────────────────────────────────────────────
 function Scene() {
   const groupRef = useRef<Group>(null);
   const { pointer } = useThree();
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
-    groupRef.current.rotation.y += delta * 0.006;
-    const targetX = 0.22 + (-pointer.y * 0.04);
+    groupRef.current.rotation.y += delta * 0.005;
+    const targetX = 0.18 + (-pointer.y * 0.04);
     const targetZ = pointer.x * 0.03;
     groupRef.current.rotation.x += (targetX - groupRef.current.rotation.x) * 0.022;
     groupRef.current.rotation.z += (targetZ - groupRef.current.rotation.z) * 0.022;
@@ -524,9 +451,22 @@ function Scene() {
       <PixelStarfield />
       <FloatingPetals />
       <PixelMandala />
-      <VoxelEarth />
-      <CloudBelt />
-      <PixelMoon />
+
+      <Earth />
+      <Moon />
+
+      {/* Distant background planets — placed off-axis so they don't overlap Earth */}
+      <DistantPlanet url={M.green}  position={[ 7.5,  2.2, -9]} scale={0.30} spin={0.05} />
+      <DistantPlanet url={M.violet} position={[-4.5, -3.0, -11]} scale={0.45} spin={0.03} />
+
+      {/* Three drifting asteroids on different orbits */}
+      <Asteroid url={M.rock1} orbitRadius={4.4} orbitSpeed={0.10} yLift={ 0.6} phase={0.0}
+                scale={0.10} tumble={[0.3, 0.5, 0.2]} />
+      <Asteroid url={M.rock2} orbitRadius={5.2} orbitSpeed={0.08} yLift={-0.5} phase={2.3}
+                scale={0.09} tumble={[0.2, 0.6, 0.4]} />
+      <Asteroid url={M.rock3} orbitRadius={3.7} orbitSpeed={0.13} yLift={ 1.1} phase={4.5}
+                scale={0.08} tumble={[0.5, 0.3, 0.3]} />
+
       {FEATURED_STARS.map((s, i) => (
         <FeaturedStarMark
           key={s.label}
@@ -539,32 +479,49 @@ function Scene() {
   );
 }
 
-// ─── Canvas ─────────────────────────────────────────────────────────────────
+// ─── Canvas ─────────────────────────────────────────────────────────────
 export default function GalaxyScene() {
   return (
     <Canvas
+      shadows
       camera={{ position: [0, 3.2, 8.6], fov: 48 }}
       dpr={[1, 2]}
       frameloop="always"
-      // Disable AA — Pixelation post-effect wants crisp blocks, not soft edges.
-      gl={{ antialias: false, alpha: true }}
+      gl={{ antialias: true, alpha: true }}
       style={{ background: 'transparent', width: '100%', height: '100%' }}
     >
-      <ambientLight intensity={0.55} />
-      <directionalLight position={[5, 6, 5]}    intensity={1.2}  color={'#DCEBFF'} />
-      <directionalLight position={[-4, 2, -3]}  intensity={0.45} color={BRAND_COLORS.armOuter} />
-      <pointLight       position={[0, 0, 0]}    intensity={0.9}  color={BRAND_COLORS.haloInner} />
+      <ambientLight intensity={0.28} color="#A8C8FF" />
+      <directionalLight
+        position={[6, 5, 4]}
+        intensity={2.6}
+        color="#FFF1D9"
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-near={0.5}
+        shadow-camera-far={40}
+        shadow-camera-left={-8}
+        shadow-camera-right={8}
+        shadow-camera-top={8}
+        shadow-camera-bottom={-8}
+        shadow-bias={-0.0005}
+      />
+      <directionalLight
+        position={[-5, 2, -4]}
+        intensity={0.55}
+        color={BRAND_COLORS.starHalo}
+      />
+      <pointLight position={[0, 0, 0]} intensity={0.4} color={BRAND_COLORS.haloInner} />
 
       <Suspense fallback={null}>
         <Scene />
         <EffectComposer>
           <Bloom
-            intensity={0.42}
-            luminanceThreshold={0.72}
-            luminanceSmoothing={0.5}
+            intensity={0.32}
+            luminanceThreshold={0.85}
+            luminanceSmoothing={0.55}
             mipmapBlur
           />
-          <Pixelation granularity={5} />
         </EffectComposer>
       </Suspense>
     </Canvas>

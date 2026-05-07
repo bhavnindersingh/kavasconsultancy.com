@@ -64,20 +64,6 @@ export const BRAND_COLORS = {
   labelOutline:   '#020916',
 } as const;
 
-// Voxel Earth biome palette — all in brand-blue family so the planet reads
-// "earth-like" while staying on-brand. Continents are pale; oceans are deep
-// navy/blue; ice caps are off-white.
-export const EARTH_PALETTE = {
-  deep:     '#001A66',
-  shallow:  '#0730C6',
-  coast:    '#1E5FE8',
-  lowland:  '#7FA5FF',
-  highland: '#B8D2FF',
-  peak:     '#F0F4FF',
-  tundra:   '#93C5FD',
-  ice:      '#F0F4FF',
-} as const;
-
 export type FeaturedStar = {
   label: string;
   arm: number;
