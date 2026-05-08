@@ -3,79 +3,98 @@ import { HERO } from '@/lib/content';
 
 const TAGS = ['4 Engineers', 'Full Code Ownership', 'Cross-Industry'] as const;
 
+// 10 service nodes placed at 36° intervals around the orbital ring
+const ORBITAL_NODES = [
+  { short: 'Frontend' },      // 0°   top
+  { short: 'Dashboards' },    // 36°  top-right
+  { short: 'Analytics' },     // 72°  right
+  { short: 'Integrations' },  // 108° right
+  { short: 'Inventory' },     // 144° bottom-right
+  { short: 'Backend & DB' },  // 180° bottom
+  { short: 'Marketing' },     // 216° bottom-left
+  { short: 'SEO' },           // 252° far-left
+  { short: 'CRM' },           // 288° far-left
+  { short: 'Payroll & HR' },  // 324° top-left
+] as const;
+
+const NODE_RADIUS = 40; // % from center
+
+function nodeLayout(x: number, y: number): { cls: string; tf: string } {
+  if (x > 60) return { cls: 'flex-row items-center',         tf: 'translate(0,-50%)' };
+  if (x < 40) return { cls: 'flex-row-reverse items-center', tf: 'translate(-100%,-50%)' };
+  if (y < 50) return { cls: 'flex-col-reverse items-center', tf: 'translate(-50%,-100%)' };
+  return           { cls: 'flex-col items-center',           tf: 'translate(-50%,0)' };
+}
+
 function ZenOrbital() {
   return (
     <div className="zen-stage relative w-full max-w-[480px] mx-auto aspect-square">
-      {/* Outer diffuse halo */}
-      <div
-        aria-hidden="true"
-        className="absolute -inset-6"
-        style={{
-          background:
-            'radial-gradient(circle at center, transparent 30%, rgba(11,67,208,0.09) 55%, transparent 80%)',
-          filter: 'blur(20px)',
-        }}
-      />
       {/* Inner ambient glow */}
       <div
         aria-hidden="true"
-        className="absolute inset-[10%]"
+        className="absolute inset-[18%]"
         style={{
           background:
-            'radial-gradient(circle at center, rgba(11,67,208,0.45) 0%, rgba(11,67,208,0.16) 40%, transparent 70%)',
+            'radial-gradient(circle at center, rgba(11,67,208,0.50) 0%, rgba(11,67,208,0.18) 45%, transparent 75%)',
           filter: 'blur(22px)',
         }}
       />
 
-      {/* Primary rotating shell — 5 outer rings + 1 inner */}
-      <div className="zen-spin absolute inset-0">
-        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.78)', transform: 'rotateX(75deg)' }} />
-        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.70)', transform: 'rotateY(72deg)' }} />
-        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.62)', transform: 'rotateX(42deg) rotateY(54deg)' }} />
-        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.54)', transform: 'rotateX(20deg) rotateY(35deg)' }} />
-        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.46)', transform: 'rotateX(60deg) rotateY(10deg)' }} />
-        <div className="absolute inset-[16%] rounded-full" style={{ border: '1px solid rgba(11,67,208,0.68)', transform: 'rotateX(30deg)' }} />
+      {/* Static outer node track */}
+      <div
+        className="absolute rounded-full"
+        style={{
+          top: `${50 - NODE_RADIUS}%`,
+          left: `${50 - NODE_RADIUS}%`,
+          right: `${50 - NODE_RADIUS}%`,
+          bottom: `${50 - NODE_RADIUS}%`,
+          border: '1px solid rgba(11,67,208,0.22)',
+        }}
+      />
+
+      {/* Primary rotating shell — contained inside the node ring */}
+      <div className="zen-spin absolute inset-[14%]">
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.76)', transform: 'rotateX(75deg)' }} />
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.68)', transform: 'rotateY(72deg)' }} />
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.60)', transform: 'rotateX(42deg) rotateY(54deg)' }} />
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.52)', transform: 'rotateX(20deg) rotateY(35deg)' }} />
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.44)', transform: 'rotateX(60deg) rotateY(10deg)' }} />
+        <div className="absolute inset-[20%] rounded-full" style={{ border: '1px solid rgba(11,67,208,0.64)', transform: 'rotateX(30deg)' }} />
       </div>
 
-      {/* Counter-rotating shell — 2 rings */}
-      <div className="zen-spin-rev absolute inset-0">
-        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.42)', transform: 'rotateX(33deg) rotateY(68deg)' }} />
-        <div className="absolute inset-[10%] rounded-full" style={{ border: '1px solid rgba(11,67,208,0.56)', transform: 'rotateY(30deg) rotateX(10deg)' }} />
+      {/* Counter-rotating shell */}
+      <div className="zen-spin-rev absolute inset-[18%]">
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.40)', transform: 'rotateX(33deg) rotateY(68deg)' }} />
+        <div className="absolute inset-[18%] rounded-full" style={{ border: '1px solid rgba(11,67,208,0.52)', transform: 'rotateY(30deg) rotateX(10deg)' }} />
       </div>
 
-      {/* Orbiting node dots — each is a rotating container with a dot at its edge */}
-      {/* Dot A: radius ~38% of stage, 11s */}
-      <div className="zen-node-a absolute inset-[12%]">
-        <div
-          className="absolute top-1/2 left-0 w-2 h-2 -translate-y-1/2 rounded-full"
-          style={{
-            background: '#0B43D0',
-            boxShadow: '0 0 10px rgba(11,67,208,1), 0 0 20px rgba(11,67,208,0.55)',
-          }}
-        />
-      </div>
-      {/* Dot B: radius ~26% of stage, 17s */}
-      <div className="zen-node-b absolute inset-[24%]">
-        <div
-          className="absolute top-0 left-1/2 w-1.5 h-1.5 -translate-x-1/2 rounded-full"
-          style={{
-            background: 'rgba(11,67,208,0.9)',
-            boxShadow: '0 0 8px rgba(11,67,208,0.9), 0 0 16px rgba(11,67,208,0.4)',
-          }}
-        />
-      </div>
-      {/* Dot C: radius ~47% of stage, 23s — soft lighter blue */}
-      <div className="zen-node-c absolute inset-[3%]">
-        <div
-          className="absolute bottom-0 left-1/2 w-1.5 h-1.5 -translate-x-1/2 rounded-full"
-          style={{
-            background: 'rgba(77,143,255,0.85)',
-            boxShadow: '0 0 10px rgba(77,143,255,0.8), 0 0 20px rgba(77,143,255,0.3)',
-          }}
-        />
-      </div>
+      {/* Labeled service nodes */}
+      {ORBITAL_NODES.map((node, i) => {
+        const rad = (i * 36 * Math.PI) / 180;
+        const x = 50 + NODE_RADIUS * Math.sin(rad);
+        const y = 50 - NODE_RADIUS * Math.cos(rad);
+        const { cls, tf } = nodeLayout(x, y);
+        return (
+          <div
+            key={node.short}
+            className={`absolute flex ${cls} gap-[5px]`}
+            style={{ left: `${x}%`, top: `${y}%`, transform: tf }}
+          >
+            <div
+              className="w-[7px] h-[7px] rounded-full shrink-0"
+              style={{
+                background: '#0B43D0',
+                boxShadow: '0 0 7px rgba(11,67,208,0.9), 0 0 14px rgba(11,67,208,0.4)',
+              }}
+            />
+            <span className="text-[8px] font-semibold tracking-widest text-brand-ink/55 whitespace-nowrap uppercase leading-none shrink-0">
+              {node.short}
+            </span>
+          </div>
+        );
+      })}
 
-      {/* Core — white-hot center + triple glow halo */}
+      {/* Core */}
       <div
         aria-hidden="true"
         className="zen-core absolute top-1/2 left-1/2 w-5 h-5 rounded-full"
