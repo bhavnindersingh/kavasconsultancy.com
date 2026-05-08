@@ -34,3 +34,40 @@ body {
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #F4F6FF; }
 ::-webkit-scrollbar-thumb { background: #0B43D0; border-radius: 3px; }
+
+/* ── Zen orbital (hero) ───────────────────────────────────────────────── */
+@keyframes zen-rotate-tilt {
+  from { transform: rotateX(15deg) rotateY(0deg); }
+  to   { transform: rotateX(15deg) rotateY(360deg); }
+}
+@keyframes zen-rotate-tilt-rev {
+  from { transform: rotateX(15deg) rotateY(0deg); }
+  to   { transform: rotateX(15deg) rotateY(-360deg); }
+}
+@keyframes zen-pulse {
+  0%, 100% { opacity: 0.7;  transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: 1;    transform: translate(-50%, -50%) scale(1.15); }
+}
+@keyframes zen-orbit-a {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes zen-orbit-b {
+  from { transform: rotate(120deg); }
+  to   { transform: rotate(480deg); }
+}
+@keyframes zen-orbit-c {
+  from { transform: rotate(-60deg); }
+  to   { transform: rotate(-420deg); }
+}
+.zen-stage    { perspective: 1200px; }
+.zen-spin     { transform-style: preserve-3d; animation: zen-rotate-tilt 70s linear infinite; }
+.zen-spin-rev { transform-style: preserve-3d; animation: zen-rotate-tilt-rev 55s linear infinite; }
+.zen-core     { animation: zen-pulse 6s ease-in-out infinite; }
+.zen-node-a   { animation: zen-orbit-a 11s linear infinite; }
+.zen-node-b   { animation: zen-orbit-b 17s linear infinite; }
+.zen-node-c   { animation: zen-orbit-c 23s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .zen-spin, .zen-spin-rev, .zen-core,
+  .zen-node-a, .zen-node-b, .zen-node-c { animation: none; }
+}

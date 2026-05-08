@@ -3,28 +3,92 @@ import { HERO } from '@/lib/content';
 
 const TAGS = ['4 Engineers', 'Full Code Ownership', 'Cross-Industry'] as const;
 
-const PILLARS = [
-  {
-    n: '01',
-    title: 'Custom-built, end to end',
-    body: 'Frontend, backend, dashboards, integrations — one team, one codebase.',
-  },
-  {
-    n: '02',
-    title: 'Designed around your workflow',
-    body: 'No forcing your business into a rigid template. We map how you actually work, then build it.',
-  },
-  {
-    n: '03',
-    title: 'Cross-industry experience',
-    body: 'Retail, services, manufacturing, logistics, hospitality, SaaS.',
-  },
-  {
-    n: '04',
-    title: 'You own the source',
-    body: 'Full code ownership. Zero vendor lock-in.',
-  },
-] as const;
+function ZenOrbital() {
+  return (
+    <div className="zen-stage relative w-full max-w-[480px] mx-auto aspect-square">
+      {/* Outer diffuse halo */}
+      <div
+        aria-hidden="true"
+        className="absolute -inset-6"
+        style={{
+          background:
+            'radial-gradient(circle at center, transparent 30%, rgba(11,67,208,0.09) 55%, transparent 80%)',
+          filter: 'blur(20px)',
+        }}
+      />
+      {/* Inner ambient glow */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-[10%]"
+        style={{
+          background:
+            'radial-gradient(circle at center, rgba(11,67,208,0.45) 0%, rgba(11,67,208,0.16) 40%, transparent 70%)',
+          filter: 'blur(22px)',
+        }}
+      />
+
+      {/* Primary rotating shell — 5 outer rings + 1 inner */}
+      <div className="zen-spin absolute inset-0">
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.78)', transform: 'rotateX(75deg)' }} />
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.70)', transform: 'rotateY(72deg)' }} />
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.62)', transform: 'rotateX(42deg) rotateY(54deg)' }} />
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.54)', transform: 'rotateX(20deg) rotateY(35deg)' }} />
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.46)', transform: 'rotateX(60deg) rotateY(10deg)' }} />
+        <div className="absolute inset-[16%] rounded-full" style={{ border: '1px solid rgba(11,67,208,0.68)', transform: 'rotateX(30deg)' }} />
+      </div>
+
+      {/* Counter-rotating shell — 2 rings */}
+      <div className="zen-spin-rev absolute inset-0">
+        <div className="absolute inset-0 rounded-full" style={{ border: '1px solid rgba(11,67,208,0.42)', transform: 'rotateX(33deg) rotateY(68deg)' }} />
+        <div className="absolute inset-[10%] rounded-full" style={{ border: '1px solid rgba(11,67,208,0.56)', transform: 'rotateY(30deg) rotateX(10deg)' }} />
+      </div>
+
+      {/* Orbiting node dots — each is a rotating container with a dot at its edge */}
+      {/* Dot A: radius ~38% of stage, 11s */}
+      <div className="zen-node-a absolute inset-[12%]">
+        <div
+          className="absolute top-1/2 left-0 w-2 h-2 -translate-y-1/2 rounded-full"
+          style={{
+            background: '#0B43D0',
+            boxShadow: '0 0 10px rgba(11,67,208,1), 0 0 20px rgba(11,67,208,0.55)',
+          }}
+        />
+      </div>
+      {/* Dot B: radius ~26% of stage, 17s */}
+      <div className="zen-node-b absolute inset-[24%]">
+        <div
+          className="absolute top-0 left-1/2 w-1.5 h-1.5 -translate-x-1/2 rounded-full"
+          style={{
+            background: 'rgba(11,67,208,0.9)',
+            boxShadow: '0 0 8px rgba(11,67,208,0.9), 0 0 16px rgba(11,67,208,0.4)',
+          }}
+        />
+      </div>
+      {/* Dot C: radius ~47% of stage, 23s — soft lighter blue */}
+      <div className="zen-node-c absolute inset-[3%]">
+        <div
+          className="absolute bottom-0 left-1/2 w-1.5 h-1.5 -translate-x-1/2 rounded-full"
+          style={{
+            background: 'rgba(77,143,255,0.85)',
+            boxShadow: '0 0 10px rgba(77,143,255,0.8), 0 0 20px rgba(77,143,255,0.3)',
+          }}
+        />
+      </div>
+
+      {/* Core — white-hot center + triple glow halo */}
+      <div
+        aria-hidden="true"
+        className="zen-core absolute top-1/2 left-1/2 w-5 h-5 rounded-full"
+        style={{
+          background:
+            'radial-gradient(circle, #FFFFFF 0%, #8AB4FF 20%, #0B43D0 50%, rgba(11,67,208,0) 80%)',
+          boxShadow:
+            '0 0 16px rgba(11,67,208,1), 0 0 36px rgba(11,67,208,0.6), 0 0 72px rgba(11,67,208,0.25)',
+        }}
+      />
+    </div>
+  );
+}
 
 export default function HeroSection() {
   return (
@@ -66,7 +130,7 @@ export default function HeroSection() {
           pt-28 md:pt-32 pb-16
           grid grid-cols-1 md:grid-cols-12 gap-y-16 md:gap-x-12 lg:gap-x-16"
       >
-        {/* Left column — headline + CTAs */}
+        {/* Left — text */}
         <div className="md:col-span-7 flex flex-col justify-center">
           <p className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.4em] text-brand-primary mb-8">
             <span className="inline-block w-8 h-px bg-brand-primary" />
@@ -118,29 +182,9 @@ export default function HeroSection() {
           </div>
         </div>
 
-        {/* Right column — numbered pillars */}
-        <div className="md:col-span-5 flex flex-col justify-center">
-          <div
-            className="space-y-7
-              md:pl-8 lg:pl-12
-              md:border-l md:border-brand-border/60"
-          >
-            {PILLARS.map((p) => (
-              <div key={p.n}>
-                <div className="flex items-baseline gap-4">
-                  <span className="font-mono text-xs font-semibold text-brand-primary tracking-wider">
-                    {p.n}
-                  </span>
-                  <p className="text-base font-semibold text-brand-ink leading-snug">
-                    {p.title}
-                  </p>
-                </div>
-                <p className="mt-1.5 ml-9 text-sm text-brand-muted leading-relaxed max-w-sm">
-                  {p.body}
-                </p>
-              </div>
-            ))}
-          </div>
+        {/* Right — zen orbital */}
+        <div className="md:col-span-5 flex items-center justify-center">
+          <ZenOrbital />
         </div>
       </div>
 
