@@ -34,7 +34,9 @@ export default function CTASection() {
     'w-full px-0 py-3 bg-transparent border-b border-brand-border text-brand-ink placeholder-brand-muted/40 focus:outline-none focus:border-brand-primary transition-colors text-sm';
 
   return (
-    <section id="contact" className="py-40 md:py-56 bg-white">
+    <section id="contact" className="relative py-40 md:py-56 bg-white">
+      <div aria-hidden="true" className="zen-grid" style={{ maskImage: 'radial-gradient(ellipse 65% 70% at 18% 50%, black 10%, transparent 72%)', WebkitMaskImage: 'radial-gradient(ellipse 65% 70% at 18% 50%, black 10%, transparent 72%)' }} />
+      <div aria-hidden="true" className="pointer-events-none absolute left-0 top-1/4 w-1/2 h-1/2" style={{ background: 'radial-gradient(circle, rgba(11,67,208,0.07) 0%, transparent 70%)', filter: 'blur(50px)' }} />
       <div className="w-full px-8 sm:px-12 md:px-14 lg:px-20 xl:px-24 2xl:px-32">
         <div className="flex flex-col lg:flex-row gap-20 lg:gap-32 items-start">
           <AnimatedSection direction="left" className="lg:w-80 flex-shrink-0 lg:sticky lg:top-32">

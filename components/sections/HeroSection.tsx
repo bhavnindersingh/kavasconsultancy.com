@@ -5,16 +5,16 @@ const TAGS = ['4 Engineers', 'Full Code Ownership', 'Cross-Industry'] as const;
 
 // 10 service nodes placed at 36° intervals around the orbital ring
 const ORBITAL_NODES = [
-  { short: 'Frontend' },      // 0°   top
-  { short: 'Dashboards' },    // 36°  top-right
-  { short: 'Analytics' },     // 72°  right
-  { short: 'Integrations' },  // 108° right
-  { short: 'Inventory' },     // 144° bottom-right
-  { short: 'Backend & DB' },  // 180° bottom
-  { short: 'Marketing' },     // 216° bottom-left
-  { short: 'SEO' },           // 252° far-left
-  { short: 'CRM' },           // 288° far-left
-  { short: 'Payroll & HR' },  // 324° top-left
+  { num: '01', short: 'Frontend' },      // 0°   top
+  { num: '02', short: 'Dashboards' },    // 36°  top-right
+  { num: '03', short: 'Analytics' },     // 72°  right
+  { num: '04', short: 'Integrations' },  // 108° right
+  { num: '05', short: 'Inventory' },     // 144° bottom-right
+  { num: '06', short: 'Backend & DB' },  // 180° bottom
+  { num: '07', short: 'Marketing' },     // 216° bottom-left
+  { num: '08', short: 'SEO' },           // 252° far-left
+  { num: '09', short: 'CRM' },           // 288° far-left
+  { num: '10', short: 'Payroll & HR' },  // 324° top-left
 ] as const;
 
 const NODE_RADIUS = 40; // % from center
@@ -28,7 +28,7 @@ function nodeLayout(x: number, y: number): { cls: string; tf: string } {
 
 function ZenOrbital() {
   return (
-    <div className="zen-stage relative w-full max-w-[480px] mx-auto aspect-square">
+    <div className="zen-stage relative w-full max-w-[480px] xl:max-w-[620px] 2xl:max-w-[780px] mx-auto aspect-square">
       {/* Inner ambient glow */}
       <div
         aria-hidden="true"
@@ -36,7 +36,7 @@ function ZenOrbital() {
         style={{
           background:
             'radial-gradient(circle at center, rgba(11,67,208,0.50) 0%, rgba(11,67,208,0.18) 45%, transparent 75%)',
-          filter: 'blur(22px)',
+          filter: 'blur(32px)',
         }}
       />
 
@@ -48,9 +48,34 @@ function ZenOrbital() {
           left: `${50 - NODE_RADIUS}%`,
           right: `${50 - NODE_RADIUS}%`,
           bottom: `${50 - NODE_RADIUS}%`,
-          border: '1px solid rgba(11,67,208,0.22)',
+          border: '1px solid rgba(11,67,208,0.35)',
         }}
       />
+
+      {/* Spoke lines from center to each node */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        aria-hidden="true"
+      >
+        {ORBITAL_NODES.map((node, i) => {
+          const rad = (i * 36 * Math.PI) / 180;
+          const x = 50 + NODE_RADIUS * Math.sin(rad);
+          const y = 50 - NODE_RADIUS * Math.cos(rad);
+          return (
+            <line
+              key={node.num}
+              x1="50%"
+              y1="50%"
+              x2={`${x}%`}
+              y2={`${y}%`}
+              stroke="#0B43D0"
+              strokeOpacity="0.10"
+              strokeWidth="0.5"
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
+      </svg>
 
       {/* Primary rotating shell — contained inside the node ring */}
       <div className="zen-spin absolute inset-[14%]">
@@ -77,7 +102,7 @@ function ZenOrbital() {
         return (
           <div
             key={node.short}
-            className={`absolute flex ${cls} gap-[5px]`}
+            className={`absolute flex ${cls} gap-[3px]`}
             style={{ left: `${x}%`, top: `${y}%`, transform: tf }}
           >
             <div
@@ -87,6 +112,9 @@ function ZenOrbital() {
                 boxShadow: '0 0 7px rgba(11,67,208,0.9), 0 0 14px rgba(11,67,208,0.4)',
               }}
             />
+            <span className="text-[7px] font-light tracking-widest text-brand-primary/50 leading-none shrink-0">
+              {node.num}
+            </span>
             <span className="text-[8px] font-semibold tracking-widest text-brand-ink/55 whitespace-nowrap uppercase leading-none shrink-0">
               {node.short}
             </span>
@@ -121,9 +149,9 @@ export default function HeroSection() {
             'linear-gradient(to right, rgba(11,67,208,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(11,67,208,0.06) 1px, transparent 1px)',
           backgroundSize: '64px 64px',
           maskImage:
-            'radial-gradient(ellipse 65% 60% at 30% 50%, black 30%, transparent 80%)',
+            'radial-gradient(ellipse 120% 80% at 22% 50%, black 15%, rgba(0,0,0,0.25) 55%, transparent 88%)',
           WebkitMaskImage:
-            'radial-gradient(ellipse 65% 60% at 30% 50%, black 30%, transparent 80%)',
+            'radial-gradient(ellipse 120% 80% at 22% 50%, black 15%, rgba(0,0,0,0.25) 55%, transparent 88%)',
         }}
       />
       {/* Soft brand-blue glow behind the headline */}
@@ -150,7 +178,7 @@ export default function HeroSection() {
           grid grid-cols-1 md:grid-cols-12 gap-y-16 md:gap-x-12 lg:gap-x-16"
       >
         {/* Left — text */}
-        <div className="md:col-span-7 flex flex-col justify-center">
+        <div className="md:col-span-7 xl:col-span-6 flex flex-col justify-center">
           <p className="flex items-center gap-3 text-xs font-semibold uppercase tracking-[0.4em] text-brand-primary mb-8">
             <span className="inline-block w-8 h-px bg-brand-primary" />
             {HERO.eyebrow}
@@ -202,7 +230,15 @@ export default function HeroSection() {
         </div>
 
         {/* Right — zen orbital */}
-        <div className="md:col-span-5 flex items-center justify-center">
+        <div className="md:col-span-5 xl:col-span-6 relative flex items-center justify-center">
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background:
+                'radial-gradient(ellipse 80% 70% at 55% 50%, rgba(11,67,208,0.055) 0%, transparent 70%)',
+            }}
+          />
           <ZenOrbital />
         </div>
       </div>

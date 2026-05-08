@@ -3,7 +3,9 @@ import AnimatedSection from '@/components/ui/AnimatedSection';
 
 export default function TeamSection() {
   return (
-    <section id="team" className="py-40 md:py-56 bg-white">
+    <section id="team" className="relative py-40 md:py-56 bg-white">
+      <div aria-hidden="true" className="zen-grid" style={{ maskImage: 'radial-gradient(ellipse 60% 65% at 82% 55%, black 10%, transparent 75%)', WebkitMaskImage: 'radial-gradient(ellipse 60% 65% at 82% 55%, black 10%, transparent 75%)' }} />
+      <div aria-hidden="true" className="pointer-events-none absolute right-0 top-1/3 w-2/5 h-1/2" style={{ background: 'radial-gradient(circle, rgba(11,67,208,0.06) 0%, transparent 70%)', filter: 'blur(50px)' }} />
       <div className="w-full px-8 sm:px-12 md:px-14 lg:px-20 xl:px-24 2xl:px-32">
         <div className="flex flex-col lg:flex-row gap-20 lg:gap-32">
           <AnimatedSection className="lg:w-72 flex-shrink-0">

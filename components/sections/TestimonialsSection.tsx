@@ -3,7 +3,9 @@ import AnimatedSection from '@/components/ui/AnimatedSection';
 
 export default function TestimonialsSection() {
   return (
-    <section className="py-40 md:py-56 bg-brand-alt">
+    <section className="relative py-40 md:py-56 bg-brand-alt">
+      <div aria-hidden="true" className="zen-grid" style={{ maskImage: 'radial-gradient(ellipse 70% 65% at 28% 45%, black 10%, transparent 75%)', WebkitMaskImage: 'radial-gradient(ellipse 70% 65% at 28% 45%, black 10%, transparent 75%)' }} />
+      <div aria-hidden="true" className="pointer-events-none absolute left-0 top-1/4 w-2/5 h-2/3" style={{ background: 'radial-gradient(circle, rgba(11,67,208,0.07) 0%, transparent 70%)', filter: 'blur(55px)' }} />
       <div className="w-full px-8 sm:px-12 md:px-14 lg:px-20 xl:px-24 2xl:px-32">
         <AnimatedSection className="mb-16">
           <p className="text-xs font-medium uppercase tracking-[0.3em] text-brand-muted">

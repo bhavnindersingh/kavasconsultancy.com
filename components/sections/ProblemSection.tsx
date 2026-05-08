@@ -6,7 +6,9 @@ const ICON_MAP = { Package, AlertTriangle, Zap } as const;
 
 export default function ProblemSection() {
   return (
-    <section id="problem" className="py-40 md:py-56 bg-white">
+    <section id="problem" className="relative py-40 md:py-56 bg-white">
+      <div aria-hidden="true" className="zen-grid" style={{ maskImage: 'radial-gradient(ellipse 65% 65% at 85% 50%, black 10%, transparent 75%)', WebkitMaskImage: 'radial-gradient(ellipse 65% 65% at 85% 50%, black 10%, transparent 75%)' }} />
+      <div aria-hidden="true" className="pointer-events-none absolute right-0 top-1/4 w-1/2 h-1/2" style={{ background: 'radial-gradient(circle, rgba(11,67,208,0.07) 0%, transparent 70%)', filter: 'blur(50px)' }} />
       <div className="w-full px-8 sm:px-12 md:px-14 lg:px-20 xl:px-24 2xl:px-32">
         <AnimatedSection className="mb-16">
           <p className="text-xs font-medium uppercase tracking-[0.3em] text-brand-muted">

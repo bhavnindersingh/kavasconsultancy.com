@@ -28,7 +28,9 @@ const ICON_MAP = {
 
 export default function CapabilitiesSection() {
   return (
-    <section id="capabilities" className="py-40 md:py-56 bg-brand-alt">
+    <section id="capabilities" className="relative py-40 md:py-56 bg-brand-alt">
+      <div aria-hidden="true" className="zen-grid" style={{ maskImage: 'radial-gradient(ellipse 70% 60% at 80% 20%, black 10%, transparent 72%)', WebkitMaskImage: 'radial-gradient(ellipse 70% 60% at 80% 20%, black 10%, transparent 72%)' }} />
+      <div aria-hidden="true" className="pointer-events-none absolute top-0 right-0 w-1/2 h-1/2" style={{ background: 'radial-gradient(circle, rgba(11,67,208,0.07) 0%, transparent 70%)', filter: 'blur(55px)' }} />
       <div className="w-full px-8 sm:px-12 md:px-14 lg:px-20 xl:px-24 2xl:px-32">
         <AnimatedSection className="mb-16">
           <p className="text-xs font-medium uppercase tracking-[0.3em] text-brand-muted mb-8">

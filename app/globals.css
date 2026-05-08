@@ -55,3 +55,23 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .zen-spin, .zen-spin-rev, .zen-core { animation: none; }
 }
+
+/* ── Zen section grids ─────────────────────────────────────────────────── */
+.zen-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right,  rgba(11,67,208,0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(11,67,208,0.055) 1px, transparent 1px);
+  background-size: 64px 64px;
+}
+.zen-grid-inv {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right,  rgba(255,255,255,0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255,255,255,0.07) 1px, transparent 1px);
+  background-size: 64px 64px;
+}

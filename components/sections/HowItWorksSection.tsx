@@ -3,7 +3,9 @@ import AnimatedSection from '@/components/ui/AnimatedSection';
 
 export default function HowItWorksSection() {
   return (
-    <section id="how-it-works" className="py-40 md:py-56 bg-white">
+    <section id="how-it-works" className="relative py-40 md:py-56 bg-white">
+      <div aria-hidden="true" className="zen-grid" style={{ maskImage: 'radial-gradient(ellipse 60% 70% at 12% 50%, black 10%, transparent 72%)', WebkitMaskImage: 'radial-gradient(ellipse 60% 70% at 12% 50%, black 10%, transparent 72%)' }} />
+      <div aria-hidden="true" className="pointer-events-none absolute left-0 top-1/4 w-1/3 h-1/2" style={{ background: 'radial-gradient(circle, rgba(11,67,208,0.08) 0%, transparent 70%)', filter: 'blur(50px)' }} />
       <div className="w-full px-8 sm:px-12 md:px-14 lg:px-20 xl:px-24 2xl:px-32">
         <div className="flex flex-col lg:flex-row gap-20 lg:gap-32">
           <AnimatedSection className="lg:w-72 flex-shrink-0">
