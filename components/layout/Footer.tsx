@@ -1,88 +1,83 @@
-import { FOOTER, NAV_LINKS, CAPABILITIES } from '@/lib/content';
-import { Mail, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
+import { SITE, FOOTER } from '@/lib/content';
 
 export default function Footer() {
   return (
-    <footer className="bg-brand-ink text-white">
-      <div className="w-full px-8 sm:px-12 md:px-14 lg:px-20 xl:px-24 2xl:px-32 pt-20 pb-10">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-0 mb-20">
+    <footer className="bg-footer text-light">
+      <div className="mx-auto max-w-[1200px] px-6 pb-9 pt-[72px] sm:px-10">
+        <div className="grid grid-cols-1 gap-12 border-b border-light/12 pb-[54px] sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           {/* Brand */}
-          <div className="col-span-2 md:col-span-1 pr-12 pb-10 md:pb-0 border-b md:border-b-0 md:border-r border-white/10">
-            <span className="text-xl font-bold tracking-tight">
-              Kavas<span className="text-brand-primary">.</span>
-            </span>
-            <p className="mt-4 text-sm text-white/50 leading-relaxed max-w-[14rem]">
-              {FOOTER.tagline}
+          <div className="max-w-[34ch]">
+            <div className="mb-4 font-serif text-[26px] font-medium tracking-[-0.01em]">
+              Kavas<span className="text-terracotta-light">.</span>
+            </div>
+            <p className="mb-[18px] text-[15px] leading-relaxed text-light/55">
+              {SITE.tagline}
             </p>
             <a
-              href={`mailto:${FOOTER.email}`}
-              className="mt-5 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.15em] text-white/50 hover:text-white transition-colors"
+              href={`mailto:${SITE.email}`}
+              className="font-mono text-sm text-terracotta-light transition-colors hover:text-light"
             >
-              <Mail size={12} />
-              {FOOTER.email}
+              {SITE.email}
             </a>
           </div>
 
-          {/* Navigate */}
-          <div className="pt-10 md:pt-0 pl-0 md:pl-12 border-r border-white/10">
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-white/30 mb-6">
-              Navigate
-            </p>
-            <div className="flex flex-col gap-3">
-              {NAV_LINKS.map((link) => (
-                <a
+          {/* Explore */}
+          <div>
+            <div className="mb-[18px] font-mono text-[11.5px] uppercase tracking-[0.12em] text-light/40">
+              Explore
+            </div>
+            <div className="flex flex-col gap-[11px]">
+              {FOOTER.explore.map((link) => (
+                <Link
                   key={link.href}
                   href={link.href}
-                  className="text-sm text-white/50 hover:text-white transition-colors"
+                  className="text-[14.5px] text-light/[0.78] transition-colors hover:text-light"
                 >
                   {link.label}
-                </a>
+                </Link>
               ))}
-              <a href="#contact" className="text-sm text-white/50 hover:text-white transition-colors">
-                Contact
-              </a>
             </div>
           </div>
 
           {/* Capabilities */}
-          <div className="pt-10 md:pt-0 pl-0 md:pl-12 border-r border-white/10">
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-white/30 mb-6">
+          <div>
+            <div className="mb-[18px] font-mono text-[11.5px] uppercase tracking-[0.12em] text-light/40">
               Capabilities
-            </p>
-            <div className="flex flex-col gap-3">
-              {CAPABILITIES.map((cap) => (
-                <a
-                  key={cap.title}
-                  href="#capabilities"
-                  className="text-sm text-white/50 hover:text-white transition-colors"
-                >
-                  {cap.title}
-                </a>
+            </div>
+            <div className="flex flex-col gap-[11px]">
+              {FOOTER.capabilities.map((c) => (
+                <span key={c} className="text-[14.5px] text-light/[0.62]">
+                  {c}
+                </span>
               ))}
             </div>
           </div>
 
-          {/* CTA */}
-          <div className="col-span-2 md:col-span-1 pt-10 md:pt-0 pl-0 md:pl-12">
-            <p className="text-xs font-medium uppercase tracking-[0.2em] text-white/30 mb-6">
+          {/* Get in touch */}
+          <div>
+            <div className="mb-[18px] font-mono text-[11.5px] uppercase tracking-[0.12em] text-light/40">
               Get in Touch
+            </div>
+            <p className="mb-[18px] max-w-[26ch] text-[14.5px] leading-relaxed text-light/60">
+              Ready to build? We respond within 24 hours.
             </p>
-            <p className="text-sm text-white/50 leading-relaxed mb-6 max-w-[14rem]">
-              Ready to build your software? We respond within 24 hours.
-            </p>
-            <a
-              href="#contact"
-              className="inline-flex items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.15em] text-white border-b border-white/40 pb-0.5 hover:text-brand-primary hover:border-brand-primary transition-colors group"
+            <Link
+              href="/contact"
+              className="inline-flex items-center gap-2 text-[14.5px] font-medium text-light transition-colors hover:text-terracotta-light"
             >
-              Start a Conversation
-              <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
-            </a>
+              Start a Conversation <span className="font-mono">→</span>
+            </Link>
           </div>
         </div>
 
-        <div className="border-t border-white/10 pt-6 flex flex-col sm:flex-row justify-between gap-2">
-          <p className="text-xs text-white/30">{FOOTER.copyright}</p>
-          <p className="text-xs text-white/20">{FOOTER.microline}</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-7">
+          <span className="text-[13px] text-light/40">
+            © {SITE.year} Kavas Consultancy. All rights reserved.
+          </span>
+          <span className="font-mono text-[11.5px] uppercase tracking-[0.08em] text-light/40">
+            Custom Software · Applied AI
+          </span>
         </div>
       </div>
     </footer>

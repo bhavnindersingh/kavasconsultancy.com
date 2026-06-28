@@ -1,18 +1,33 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-primary:  #0B43D0;
-  --color-brand-deep:     #001D88;
-  --color-brand-mid:      #0730C6;
-  --color-brand-surface:  #FFFFFF;
-  --color-brand-alt:      #F0F4FF;
-  --color-brand-ink:      #0D1117;
-  --color-brand-muted:    #6B7280;
-  --color-brand-card:     #FFFFFF;
-  --color-brand-border:   #E5E7EB;
-  --color-brand-glow:     #0B43D0;
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* ── Surfaces ─────────────────────────────────────────────── */
+  --color-cream:        #F5F2EB; /* page background */
+  --color-cream-raised: #FBF9F4; /* raised cards */
+  --color-cream-alt:    #ECE7DD; /* alternating section band */
+  --color-placeholder:  #E7E1D5; /* image-slot placeholders */
+
+  /* ── Dark surfaces ────────────────────────────────────────── */
+  --color-ink:      #1C1A16; /* primary text / dark buttons */
+  --color-dark:     #181511; /* dark feature bands */
+  --color-dark-2:   #211C17; /* dark mockup cards */
+  --color-footer:   #141109; /* footer */
+
+  /* ── Accents ──────────────────────────────────────────────── */
+  --color-terracotta:       #B5512C;
+  --color-terracotta-light: #D98A5E;
+  --color-clay:             #A06A45; /* eyebrows on light */
+  --color-sand:             #C89A7A; /* eyebrows on dark */
+
+  /* ── Text ─────────────────────────────────────────────────── */
+  --color-muted:    #57514A; /* body muted on light */
+  --color-faint:    #7A7468; /* tertiary on light */
+  --color-light:    #F2EEE6; /* text on dark */
+
+  /* ── Fonts ────────────────────────────────────────────────── */
+  --font-sans:  var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono:  var(--font-geist-mono), ui-monospace, monospace;
+  --font-serif: var(--font-newsreader), Georgia, serif;
 }
 
 html {
@@ -20,58 +35,36 @@ html {
 }
 
 body {
-  background-color: #FFFFFF;
-  color: #0D1117;
-  font-family: var(--font-sans), Arial, sans-serif;
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 ::selection {
-  background-color: #0B43D0;
-  color: #FFFFFF;
+  background-color: var(--color-terracotta);
+  color: var(--color-cream);
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #F4F6FF; }
-::-webkit-scrollbar-thumb { background: #0B43D0; border-radius: 3px; }
+::-webkit-scrollbar { width: 9px; }
+::-webkit-scrollbar-track { background: var(--color-cream-alt); }
+::-webkit-scrollbar-thumb { background: rgba(28, 26, 22, 0.28); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-terracotta); }
 
-/* ── Zen orbital (hero) ───────────────────────────────────────────────── */
-@keyframes zen-rotate-tilt {
-  from { transform: rotateX(15deg) rotateY(0deg); }
-  to   { transform: rotateX(15deg) rotateY(360deg); }
+input::placeholder,
+textarea::placeholder { color: #A39C90; }
+
+/* ── Marquee ──────────────────────────────────────────────── */
+@keyframes kavas-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
 }
-@keyframes zen-rotate-tilt-rev {
-  from { transform: rotateX(15deg) rotateY(0deg); }
-  to   { transform: rotateX(15deg) rotateY(-360deg); }
+.kavas-marquee {
+  display: flex;
+  width: max-content;
+  animation: kavas-marquee 44s linear infinite;
 }
-@keyframes zen-pulse {
-  0%, 100% { opacity: 0.7;  transform: translate(-50%, -50%) scale(1); }
-  50%      { opacity: 1;    transform: translate(-50%, -50%) scale(1.15); }
-}
-.zen-stage    { perspective: 1200px; }
-.zen-spin     { transform-style: preserve-3d; animation: zen-rotate-tilt 70s linear infinite; }
-.zen-spin-rev { transform-style: preserve-3d; animation: zen-rotate-tilt-rev 55s linear infinite; }
-.zen-core     { animation: zen-pulse 6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .zen-spin, .zen-spin-rev, .zen-core { animation: none; }
-}
-
-/* ── Zen section grids ─────────────────────────────────────────────────── */
-.zen-grid {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(to right,  rgba(11,67,208,0.055) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(11,67,208,0.055) 1px, transparent 1px);
-  background-size: 64px 64px;
-}
-.zen-grid-inv {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(to right,  rgba(255,255,255,0.07) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255,255,255,0.07) 1px, transparent 1px);
-  background-size: 64px 64px;
+  .kavas-marquee { animation: none; }
 }

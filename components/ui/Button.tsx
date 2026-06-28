@@ -1,50 +1,70 @@
+import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { ButtonHTMLAttributes } from 'react';
+import { ReactNode } from 'react';
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'outline' | 'ghost';
-  size?: 'sm' | 'md' | 'lg';
-  as?: 'button' | 'a';
-  href?: string;
+type Variant = 'dark' | 'outline' | 'light' | 'onAccent';
+type Size = 'md' | 'lg';
+
+const variants: Record<Variant, string> = {
+  // Ink pill on light backgrounds — terracotta on hover.
+  dark: 'bg-ink text-cream hover:bg-terracotta hover:-translate-y-0.5',
+  // Outlined pill on light backgrounds.
+  outline:
+    'border border-ink/20 text-ink hover:border-ink hover:bg-ink/[0.04]',
+  // Light pill used on dark feature bands.
+  light: 'bg-light text-ink hover:bg-terracotta-light hover:-translate-y-0.5',
+  // Pill used on the terracotta CTA band.
+  onAccent: 'bg-[#F7EFE7] text-ink hover:-translate-y-0.5',
+};
+
+const sizes: Record<Size, string> = {
+  md: 'px-7 py-[15px] text-[15.5px]',
+  lg: 'px-8 py-4 text-base',
+};
+
+interface ButtonProps {
+  href: string;
+  children: ReactNode;
+  variant?: Variant;
+  size?: Size;
+  arrow?: boolean;
+  className?: string;
 }
 
 export default function Button({
-  variant = 'primary',
-  size = 'md',
-  className,
-  children,
-  as: Tag = 'button',
   href,
-  ...props
+  children,
+  variant = 'dark',
+  size = 'md',
+  arrow = false,
+  className,
 }: ButtonProps) {
-  const base =
-    'inline-flex items-center justify-center gap-2 font-semibold rounded-full transition-all duration-200 cursor-pointer';
+  const external = href.startsWith('http') || href.startsWith('mailto:');
+  const classes = cn(
+    'inline-flex items-center gap-2.5 font-medium rounded-full tracking-[-0.01em] transition-[transform,background-color,border-color] duration-200',
+    variants[variant],
+    sizes[size],
+    className,
+  );
 
-  const variants = {
-    primary:
-      'bg-brand-primary text-brand-ink hover:bg-brand-mid active:scale-95 shadow-lg shadow-brand-primary/20',
-    outline:
-      'border border-brand-primary text-brand-ink hover:bg-brand-primary/10 active:scale-95',
-    ghost: 'text-brand-muted hover:text-brand-ink active:scale-95',
-  };
+  const inner = (
+    <>
+      {children}
+      {arrow && <span className="font-mono leading-none">→</span>}
+    </>
+  );
 
-  const sizes = {
-    sm: 'px-4 py-2 text-sm',
-    md: 'px-6 py-3 text-base',
-    lg: 'px-8 py-4 text-lg',
-  };
-
-  if (Tag === 'a' && href) {
+  if (external) {
     return (
-      <a href={href} className={cn(base, variants[variant], sizes[size], className)}>
-        {children}
+      <a href={href} className={classes}>
+        {inner}
       </a>
     );
   }
 
   return (
-    <button className={cn(base, variants[variant], sizes[size], className)} {...props}>
-      {children}
-    </button>
+    <Link href={href} className={classes}>
+      {inner}
+    </Link>
   );
 }

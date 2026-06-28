@@ -2,26 +2,22 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import { ReactNode } from 'react';
 
-interface AnimatedSectionProps {
+interface RevealProps {
   children: ReactNode;
   className?: string;
   delay?: number;
-  direction?: 'up' | 'left' | 'right' | 'none';
 }
 
+/**
+ * Mirrors the design's `data-reveal` behaviour: a subtle fade + 18px rise
+ * once the element scrolls into view. Respects reduced-motion.
+ */
 export default function AnimatedSection({
   children,
   className,
   delay = 0,
-  direction = 'up',
-}: AnimatedSectionProps) {
+}: RevealProps) {
   const reduceMotion = useReducedMotion();
-
-  const initial = {
-    opacity: 0,
-    y: direction === 'up' ? 52 : 0,
-    x: direction === 'left' ? -40 : direction === 'right' ? 40 : 0,
-  };
 
   if (reduceMotion) {
     return <div className={className}>{children}</div>;
@@ -29,10 +25,10 @@ export default function AnimatedSection({
 
   return (
     <motion.div
-      initial={initial}
-      whileInView={{ opacity: 1, y: 0, x: 0 }}
-      viewport={{ once: true, margin: '-60px' }}
-      transition={{ duration: 1.1, delay, ease: [0.22, 1, 0.36, 1] }}
+      initial={{ opacity: 0, y: 18 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '0px 0px -7% 0px' }}
+      transition={{ duration: 0.7, delay, ease: [0.2, 0.7, 0.2, 1] }}
       className={className}
     >
       {children}

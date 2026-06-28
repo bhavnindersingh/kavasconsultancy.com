@@ -1,58 +1,53 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { Menu, X } from 'lucide-react';
 import { NAV_LINKS } from '@/lib/content';
 import { cn } from '@/lib/utils';
-import { Menu, X } from 'lucide-react';
 
 export default function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const pathname = usePathname();
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+  const isActive = (href: string) =>
+    href === '/' ? pathname === '/' : pathname.startsWith(href);
 
   return (
-    <header
-      className={cn(
-        'fixed top-0 left-0 right-0 z-50 transition-all duration-500',
-        scrolled
-          ? 'bg-white/96 backdrop-blur-md border-b border-brand-border py-4'
-          : 'bg-transparent py-6',
-      )}
-    >
-      <div className="w-full px-8 sm:px-12 md:px-14 lg:px-20 xl:px-24 2xl:px-32 flex items-center justify-between">
-        <a href="/">
-          <span className="text-xl font-bold text-brand-ink tracking-tight">
-            Kavas<span className="text-brand-primary">.</span>
-          </span>
-        </a>
+    <header className="sticky top-0 z-50 border-b border-ink/10 bg-cream/[0.82] backdrop-blur-xl">
+      <div className="mx-auto flex h-[74px] max-w-[1200px] items-center justify-between px-6 sm:px-10">
+        <Link
+          href="/"
+          className="font-serif text-[25px] font-medium tracking-[-0.01em] text-ink"
+        >
+          Kavas<span className="text-terracotta">.</span>
+        </Link>
 
-        <nav className="hidden md:flex items-center gap-10">
+        <nav className="hidden items-center gap-9 md:flex">
           {NAV_LINKS.map((link) => (
-            <a
+            <Link
               key={link.href}
               href={link.href}
-              className="text-xs font-medium uppercase tracking-[0.2em] text-brand-muted hover:text-brand-ink transition-colors duration-300"
+              className={cn(
+                'text-[14.5px] tracking-[-0.01em] transition-colors',
+                isActive(link.href)
+                  ? 'text-ink'
+                  : 'text-[#5C564D] hover:text-ink',
+              )}
             >
               {link.label}
-            </a>
+            </Link>
           ))}
-        </nav>
-
-        <div className="hidden md:flex items-center">
-          <a
-            href="#contact"
-            className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary border-b border-brand-primary pb-0.5 hover:text-brand-mid hover:border-brand-mid transition-colors duration-300"
+          <Link
+            href="/contact"
+            className="rounded-full bg-ink px-5 py-2.5 text-sm font-medium tracking-[-0.01em] text-cream transition-[transform,background-color] duration-200 hover:-translate-y-0.5 hover:bg-terracotta"
           >
             Get in Touch
-          </a>
-        </div>
+          </Link>
+        </nav>
 
         <button
-          className="md:hidden text-brand-muted hover:text-brand-ink transition-colors"
+          className="text-muted transition-colors hover:text-ink md:hidden"
           onClick={() => setMenuOpen(!menuOpen)}
           aria-label="Toggle menu"
         >
@@ -61,25 +56,25 @@ export default function Navbar() {
       </div>
 
       {menuOpen && (
-        <div className="md:hidden bg-white/98 backdrop-blur-md border-t border-brand-border">
-          <div className="w-full px-8 sm:px-12 py-8 flex flex-col gap-6">
+        <div className="border-t border-ink/10 bg-cream/95 backdrop-blur-xl md:hidden">
+          <div className="flex flex-col gap-5 px-6 py-7 sm:px-10">
             {NAV_LINKS.map((link) => (
-              <a
+              <Link
                 key={link.href}
                 href={link.href}
-                className="text-xs font-medium uppercase tracking-[0.2em] text-brand-muted hover:text-brand-ink transition-colors"
+                className="text-[15px] text-[#5C564D] transition-colors hover:text-ink"
                 onClick={() => setMenuOpen(false)}
               >
                 {link.label}
-              </a>
+              </Link>
             ))}
-            <a
-              href="#contact"
-              className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-primary border-b border-brand-primary pb-0.5 self-start"
+            <Link
+              href="/contact"
+              className="self-start rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-cream"
               onClick={() => setMenuOpen(false)}
             >
               Get in Touch
-            </a>
+            </Link>
           </div>
         </div>
       )}

@@ -43,3 +43,6 @@ next-env.d.ts
 # 3D asset packs (large files, not for deployment)
 Ultimate Space Kit*/
 *.zip
+
+# Reference design exports (not part of the app)
+Kavasconsultancy website polish/

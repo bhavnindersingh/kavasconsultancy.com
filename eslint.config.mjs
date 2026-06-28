@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Reference design exports — not part of the app source.
+    "Kavasconsultancy website polish/**",
   ]),
 ]);
 

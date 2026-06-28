@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
-  const { name, email, business, message } = await req.json();
+  const { name, email, business, message, type } = await req.json();
+
+  const TYPE_LABELS: Record<string, string> = {
+    software: 'Custom Software',
+    ai: 'Applied AI / LLMs',
+    both: 'Both',
+    unsure: 'Not sure yet',
+  };
+  const typeLabel = type ? TYPE_LABELS[type] ?? type : undefined;
 
   if (!name || !email || !message) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -12,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   if (!apiKey) {
     console.warn('RESEND_API_KEY not set — logging inquiry to console');
-    console.log({ name, email, business, message });
+    console.log({ name, email, business, type: typeLabel, message });
     return NextResponse.json({ ok: true });
   }
 
@@ -27,7 +35,7 @@ export async function POST(req: NextRequest) {
       to: [toEmail],
       reply_to: email,
       subject: `New inquiry from ${name}${business ? ` — ${business}` : ''}`,
-      text: `Name: ${name}\nEmail: ${email}\nBusiness: ${business || 'Not provided'}\n\n${message}`,
+      text: `Name: ${name}\nEmail: ${email}\nBusiness: ${business || 'Not provided'}\nInterested in: ${typeLabel || 'Not specified'}\n\n${message}`,
     }),
   });
 
