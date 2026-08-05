@@ -1,0 +1,1308 @@
+@import "tailwindcss";
+
+/* ————————————————————————————————————————
+   KAVAS — Collins-literal system, v2
+   Rebuilt against full-page captures of wearecollins.com
+   (Aug 2026): calm centered heroes, small pills, stacked
+   media deck, poster filmstrips, dark cocoa surfaces,
+   giant serif footer nav.
+   ———————————————————————————————————————— */
+
+@theme inline {
+  --color-paper: #f8f8f7;
+  --color-ink: #140700;
+  --color-body: #4d4a47;
+  --color-mute: #85817d;
+  --color-ghost: #d8d5d1;
+  --color-line: #e4e2df;
+  --color-card: #ffffff;
+  --color-cocoa: #1c0e04;
+  --color-cream: #f4efe9;
+  --font-serif: var(--font-newsreader);
+  --font-sans: var(--font-instrument);
+}
+
+:root {
+  /* type scale — caps are the desktop targets, vw keeps it fluid below */
+  --fs-hero: clamp(34px, 3.6vw, 60px);
+  --fs-thesis: clamp(26px, 2.4vw, 40px);
+  --fs-section: clamp(23px, 1.95vw, 33px); /* serif "Impact"/"Notes" heads */
+  --fs-list: clamp(19px, 1.7vw, 30px);
+  --fs-footer-nav: clamp(32px, 3.7vw, 58px);
+  --fs-menu: clamp(32px, 4vw, 58px);
+  --fs-lede: clamp(21px, 2.05vw, 36px);
+  --fs-body: 18px;
+  --fs-meta: 14px;
+
+  /* rhythm */
+  --gutter: clamp(14px, 1.6vw, 18px);
+  /* shared content inset — banner and all sections align to this */
+  --inset: clamp(20px, 11.5vw, 190px);
+  --pad-section: clamp(64px, 8.5vw, 120px);
+  --pad-row: 20px;
+  --radius: 14px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --header-h: 60px;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --inset: clamp(16px, 6vw, 48px);
+  }
+}
+
+
+
+:root {
+  /* animated page ground — GSAP tints this while scrolling certain sections */
+  --page-bg: #f8f8f7;
+}
+
+html {
+  background: var(--page-bg);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+/* ————— primitives ————— */
+
+.wrap {
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+.inset {
+  padding-left: var(--inset);
+  padding-right: var(--inset);
+}
+.section {
+  padding-top: var(--pad-section);
+  padding-bottom: var(--pad-section);
+}
+
+.label {
+  font-size: 14px;
+  letter-spacing: 0;
+  color: var(--color-ink);
+}
+.meta {
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+  color: var(--color-mute);
+}
+.serif {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.hero-h {
+  font-family: var(--font-serif);
+  font-size: var(--fs-hero);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  font-weight: 400;
+}
+/* hero: WebGL glitch variant — canvas replaces the type's pixels */
+.hero-glitch {
+  position: relative;
+  width: 100%;
+  cursor: crosshair;
+}
+.hero-glitch canvas {
+  position: absolute;
+  inset: 0;
+}
+.hero-glitch__text {
+  margin: 0;
+  text-align: center;
+}
+
+/* hero: hover-cycling final word */
+.hero-statement {
+  cursor: default;
+}
+.hero-cycle {
+  position: relative;
+  display: inline-grid;
+  /* No overflow:hidden — that would make the box take its baseline from
+     its bottom edge and drop the word off the line. clip-path masks the
+     roll without touching layout or baseline. */
+  padding-bottom: 0.14em; /* room for descenders */
+  clip-path: inset(-0.4em 0 0 0);
+}
+.hero-cycle__word {
+  grid-area: 1 / 1;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.thesis {
+  font-family: var(--font-serif);
+  font-size: var(--fs-thesis);
+  line-height: 1.18;
+  letter-spacing: -0.012em;
+  font-weight: 400;
+}
+.section-h {
+  font-family: var(--font-serif);
+  font-size: var(--fs-section);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  font-weight: 400;
+}
+.lede {
+  font-family: var(--font-serif);
+  font-size: var(--fs-lede);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-weight: 400;
+}
+
+.body-text {
+  color: var(--color-body);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  max-width: 36em;
+}
+.body-text + .body-text {
+  margin-top: 1em;
+}
+
+/* dark surface helpers */
+.on-dark {
+  color: var(--color-cream);
+}
+.on-dark .label {
+  color: var(--color-cream);
+}
+.on-dark .meta {
+  color: rgba(244, 239, 233, 0.55);
+}
+.on-dark .body-text {
+  color: rgba(244, 239, 233, 0.72);
+}
+
+/* contact: airy split between the copy rail and the form */
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 56px;
+}
+@media (min-width: 900px) {
+  .contact-grid {
+    grid-template-columns: minmax(0, 24fr) minmax(0, 60fr);
+    gap: clamp(72px, 10vw, 180px);
+  }
+}
+
+/* ————— pills (Collins: small, quiet) ————— */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  border-radius: 999px;
+  min-height: 48px;
+  padding: 0 24px;
+  font-size: 13.5px;
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+  transition: transform 0.4s var(--ease-out);
+  cursor: pointer;
+  border: 0;
+  text-decoration: none;
+}
+.pill:hover {
+  transform: scale(1.05);
+}
+.pill--outline {
+  background: transparent;
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 1px var(--color-ghost);
+}
+.pill--white {
+  background: #fff;
+  color: var(--color-ink);
+}
+/* "Read the full story" — outline pill, expand-arrows spread on hover */
+.story-pill {
+  box-shadow: inset 0 0 0 1px var(--color-ink);
+  padding: 0 26px;
+  font-size: 14px;
+  background: transparent;
+  color: var(--color-ink);
+  transition: background-color 0.3s, color 0.3s,
+    transform 0.45s var(--ease-out);
+}
+.story-pill:hover {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+/* brackets pull in, then settle back — reads as a pulse, not a growth */
+.story-pill:hover .c1 {
+  animation: bracket-tr 0.5s var(--ease-out);
+}
+.story-pill:hover .c2 {
+  animation: bracket-bl 0.5s var(--ease-out);
+}
+@keyframes bracket-tr {
+  50% {
+    transform: translate(-2px, 2px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+@keyframes bracket-bl {
+  50% {
+    transform: translate(2px, -2px);
+  }
+  100% {
+    transform: translate(0, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .story-pill:hover .c1,
+  .story-pill:hover .c2 {
+    animation: none;
+  }
+}
+
+/* ————— laurels (award chips row) ————— */
+.laurel {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--color-mute);
+  white-space: nowrap;
+}
+.laurel::before {
+  content: "❮";
+  font-size: 13px;
+  color: var(--color-ghost);
+}
+.laurel::after {
+  content: "❯";
+  font-size: 13px;
+  color: var(--color-ghost);
+}
+
+/* ————— media deck (hero banner, aligned to --inset) ————— */
+.deck {
+  position: relative;
+  width: calc(100% - 2 * var(--inset));
+  margin: 0 auto;
+}
+.deck__front {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/8.4;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #ddd;
+}
+
+/* ————— hairline rows (Collins Programs) ————— */
+.rows {
+  border-top: 1px solid var(--color-line);
+}
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: baseline;
+  gap: 4px var(--gutter);
+  padding: var(--pad-row) 0;
+  border-bottom: 1px solid var(--color-line);
+  text-decoration: none;
+  color: inherit;
+}
+@media (min-width: 900px) {
+  .row {
+    grid-template-columns: minmax(0, 40fr) minmax(0, 54fr) minmax(0, 6fr);
+  }
+}
+.row__name {
+  font-size: var(--fs-list);
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--color-ink);
+  transition: color 0.3s, padding-left 0.4s var(--ease-out);
+}
+.row__sub {
+  font-size: 14px;
+  color: var(--color-mute);
+  transition: color 0.3s;
+}
+.row__arrow {
+  justify-self: end;
+  font-size: 16px;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.35s, transform 0.35s var(--ease-out),
+    padding-right 0.4s var(--ease-out);
+}
+
+/* gliding highlight frame — single shared element slides between rows.
+   Text uses difference-blend so it inverts in perfect sync with the
+   frame passing beneath it (readable at every point of the glide). */
+.rows--glide {
+  position: relative;
+  isolation: isolate;
+  /* opaque ground is required for the difference blend to resolve */
+  background: var(--page-bg);
+}
+/* white band for the Engagements list */
+.band-white {
+  background: #fff;
+}
+.band-white .rows--glide {
+  background: #fff;
+}
+.rows--glide .glider {
+  position: absolute;
+  left: calc(-1 * var(--gutter));
+  right: calc(-1 * var(--gutter));
+  top: 0;
+  height: 0;
+  border-radius: 12px;
+  background: var(--color-ink);
+  opacity: 0;
+  transition: top 0.45s var(--ease-out), height 0.45s var(--ease-out),
+    opacity 0.15s;
+  pointer-events: none;
+  z-index: 1; /* above row hairlines… */
+}
+.rows--glide .glider[data-visible="true"] {
+  opacity: 1;
+  /* appear instantly; the base rule still fades it out on leave */
+  transition: top 0.45s var(--ease-out), height 0.45s var(--ease-out),
+    opacity 0s;
+}
+.rows--glide .row > * {
+  position: relative;
+  z-index: 2; /* …but below row text */
+}
+/* difference blend: white renders near-ink on paper and flips to paper
+   exactly where the ink frame sits beneath — zero content lag */
+.rows--glide .row__name {
+  color: #fff;
+  mix-blend-mode: difference;
+  transition: color 0.3s, padding-left 0.3s var(--ease-out);
+}
+.rows--glide .row__sub {
+  color: rgb(133, 133, 133);
+  mix-blend-mode: difference;
+  transition: color 0.3s;
+}
+.rows--glide .row__arrow {
+  color: #fff;
+  mix-blend-mode: difference;
+}
+/* dim = paler blend source (opacity would break the blend backdrop) */
+.rows--glide .row.is-dim .row__name,
+.rows--glide .row.is-dim .row__sub {
+  color: rgb(44, 44, 44);
+}
+.rows--glide .row.is-on .row__name {
+  padding-left: 20px;
+}
+/* brighter blend source on the active row so the promise line reads
+   clearly against the ink frame instead of looking washed out */
+.rows--glide .row.is-on .row__sub {
+  color: rgb(222, 222, 222);
+}
+.rows--glide .row.is-on .row__arrow {
+  opacity: 1;
+  transform: translateX(0);
+  padding-right: 6px;
+  transition: opacity 0s, transform 0s,
+    padding-right 0.3s var(--ease-out);
+}
+
+/* ————— impact ghost list ————— */
+.impact-line {
+  font-family: var(--font-serif);
+  font-size: var(--fs-thesis);
+  line-height: 1.55;
+  letter-spacing: -0.012em;
+  color: var(--color-ghost);
+  transition: color 0.5s;
+}
+.impact-line.is-active {
+  color: var(--color-ink);
+}
+
+/* ————— filmstrip (home case cards / case media) ————— */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: var(--gutter);
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 8px var(--gutter);
+  scrollbar-width: none;
+}
+.strip::-webkit-scrollbar {
+  display: none;
+}
+.strip > * {
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+}
+.strip--center {
+  justify-content: safe center;
+}
+.strip--end {
+  align-items: flex-end;
+}
+/* case-page media: varied heights + widths, sharing a bottom baseline */
+.strip--media {
+  align-items: flex-end;
+}
+/* left-aligned strip with a subtle scrollbar (case studies reel) */
+.strip--bar {
+  padding-left: var(--inset);
+  padding-right: var(--gutter);
+  padding-bottom: 44px; /* breathing room between cards and scrollbar */
+  scroll-padding-left: var(--inset);
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ghost) transparent;
+}
+.strip--bar::-webkit-scrollbar {
+  display: block;
+  height: 2px;
+}
+.strip--bar::-webkit-scrollbar-thumb {
+  background: var(--color-ghost);
+  border-radius: 999px;
+}
+.strip--bar::-webkit-scrollbar-track {
+  background: transparent;
+  margin-inline: var(--inset) var(--gutter);
+}
+
+.poster {
+  position: relative;
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.6s var(--ease-out);
+}
+.poster:hover {
+  transform: scale(0.98);
+}
+.poster__img {
+  object-fit: cover;
+}
+/* case page: real screenshots in the media strip */
+.case-shot {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: #eceae7;
+  flex: 0 0 auto;
+}
+.case-shot__img {
+  object-fit: cover;
+}
+.poster__name {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  z-index: 2;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(20, 7, 0, 0.55);
+  color: var(--color-cream);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.3s, transform 0.3s var(--ease-out);
+}
+.poster:hover .poster__name {
+  opacity: 1;
+  transform: none;
+}
+.poster--ghost {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  border: 1px dashed var(--color-ghost);
+}
+.on-dark .poster--ghost,
+.poster--ghost.poster--ghost-dark {
+  border-color: rgba(244, 239, 233, 0.3);
+}
+
+/* poster fill tints (placeholder art until real imagery) */
+.tint {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+.tint span {
+  font-family: var(--font-serif);
+  font-size: clamp(26px, 3vw, 44px);
+  opacity: 0.35;
+}
+.tint--a { background: linear-gradient(160deg, #e9e6e1, #d6d2cc); color: #6b665f; }
+.tint--b { background: linear-gradient(160deg, #2a1a0d, #140700); color: #cbc2b8; }
+.tint--c { background: linear-gradient(160deg, #dcd9d4, #c9c5be); color: #5f5a54; }
+.tint--d { background: linear-gradient(160deg, #35251a, #1c0e04); color: #d8cfc5; }
+.tint--e { background: linear-gradient(160deg, #efedea, #dedbd6); color: #77726c; }
+
+/* ————— dark full-bleed band (home Notes / Arts&Culture) ————— */
+.band {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(160deg, #2c1c10 0%, #1c0e04 55%, #120801 100%);
+}
+.band__chip {
+  position: absolute;
+  right: var(--gutter);
+  bottom: 18px;
+  font-size: 12px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(244, 239, 233, 0.14);
+  color: var(--color-cream);
+  backdrop-filter: blur(6px);
+}
+
+/* ————— scatter hero (programs page) ————— */
+.scatter {
+  position: relative;
+  min-height: 130svh;
+}
+.scatter__item {
+  position: absolute;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(20, 7, 0, 0.12);
+}
+.scatter__item--blur {
+  filter: blur(7px);
+  opacity: 0.85;
+}
+
+/* ————— white panel (case "Augments" pattern) ————— */
+.panel {
+  background: var(--color-card);
+  border-radius: 20px;
+  padding: clamp(40px, 5vw, 72px) clamp(20px, 4vw, 56px);
+  text-align: center;
+}
+.panel__stack {
+  position: relative;
+  width: min(560px, 80%);
+  margin: clamp(28px, 3vw, 48px) auto;
+}
+
+/* ————— impact / press cards ————— */
+.icard {
+  background: var(--color-card);
+  border-radius: var(--radius);
+  padding: 22px;
+  min-height: 300px;
+  width: clamp(230px, 22vw, 300px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+}
+.icard__glyph {
+  font-size: clamp(40px, 4vw, 60px);
+  line-height: 1;
+}
+.icard__glyph.serif {
+  letter-spacing: -0.02em;
+}
+.icard__title {
+  font-size: 13.5px;
+  color: var(--color-ink);
+}
+.icard__sub {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--color-mute);
+  margin-top: 6px;
+}
+
+/* ————— collage (work index, dark) ————— */
+.collage-row {
+  display: flex;
+  align-items: flex-end; /* posters share a baseline in each row */
+  justify-content: center;
+  gap: clamp(16px, 2vw, 28px);
+  margin-bottom: clamp(40px, 5vw, 80px);
+}
+
+/* lab entry: headline result block */
+.lab-finding {
+  border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  padding: 26px 0 30px;
+}
+
+/* ————— notes/lab grid (Collins Collaborations layout) ————— */
+.notes-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(32px, 3.2vw, 52px) clamp(16px, 1.8vw, 26px);
+}
+@media (min-width: 700px) {
+  .notes-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1000px) {
+  .notes-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.note-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+.note-card__art {
+  aspect-ratio: 1/1;
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: transform 0.6s var(--ease-out);
+}
+.note-card:hover .note-card__art {
+  transform: scale(0.98);
+}
+.note-card__title {
+  margin-top: 14px;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--color-ink);
+}
+.note-card:hover .note-card__title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+/* ————— process steps (studio: How We Work) ————— */
+.psteps {
+  position: relative;
+  padding-left: 46px;
+  list-style: none;
+}
+.pspine {
+  position: absolute;
+  left: 7px;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: rgba(244, 239, 233, 0.16);
+  overflow: hidden;
+}
+.pspine__fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--color-cream);
+  transform: scaleY(0);
+  transform-origin: top;
+}
+.pstep {
+  position: relative;
+  padding: clamp(28px, 4vw, 56px) 0;
+}
+.pstep__dot {
+  position: absolute;
+  left: -46px;
+  top: calc(clamp(28px, 4vw, 56px) + 9px);
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  border: 1px solid rgba(244, 239, 233, 0.35);
+  background: var(--color-cocoa);
+  transition: background 0.45s var(--ease-out), border-color 0.45s,
+    transform 0.45s var(--ease-out);
+}
+.pstep.is-on .pstep__dot {
+  background: var(--color-cream);
+  border-color: var(--color-cream);
+  transform: scale(1.18);
+}
+.pstep__num {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: rgba(244, 239, 233, 0.45);
+  transition: color 0.45s;
+}
+.pstep.is-on .pstep__num {
+  color: rgba(244, 239, 233, 0.8);
+}
+.pstep__name {
+  font-family: var(--font-serif);
+  font-size: clamp(26px, 3.1vw, 46px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  margin-top: 8px;
+  color: rgba(244, 239, 233, 0.42);
+  transition: color 0.5s var(--ease-out);
+}
+.pstep.is-on .pstep__name {
+  color: var(--color-cream);
+}
+.pstep__body {
+  margin-top: 12px;
+  max-width: 30em;
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(244, 239, 233, 0.5);
+  transition: color 0.5s;
+}
+.pstep.is-on .pstep__body {
+  color: rgba(244, 239, 233, 0.78);
+}
+
+/* ————— team grid (dark) ————— */
+.person__img {
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 5/6;
+}
+.person p {
+  font-size: 14px;
+  margin-top: 10px;
+}
+.person .meta {
+  margin-top: 2px;
+}
+
+/* ————— reveal ————— */
+.mask {
+  display: inline-block;
+  /* clip-path rather than overflow:hidden — an overflow-hidden inline box
+     takes its baseline from its bottom edge, which drops masked words
+     below the line they share with unmasked type */
+  clip-path: inset(-0.35em 0 0 0);
+  padding-bottom: 0.14em;
+}
+.mask > span {
+  display: inline-block;
+  transform: translateY(110%);
+  will-change: transform;
+}
+
+/* lede scroll ink-reveal */
+.lede-reveal .w {
+  color: var(--color-ghost);
+  transition: color 0.25s linear;
+}
+.lede-reveal .w.lit {
+  color: var(--color-ink);
+}
+
+/* ————— header ————— */
+.site-header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--header-h);
+  padding: 0 var(--inset); /* aligned to the shared content line */
+  transition: transform 0.5s var(--ease-out);
+  /* white + difference = auto-inverts over any ground (paper, cocoa, tints) */
+  mix-blend-mode: difference;
+}
+.site-header.is-hidden {
+  transform: translateY(-100%);
+}
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: #fff; /* blend-mode inversion handles light/dark grounds */
+}
+.logo {
+  height: 17px;
+  width: auto;
+  display: block;
+}
+.menu-btn {
+  display: inline-grid;
+  gap: 4px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 10px 4px;
+}
+.menu-btn i {
+  width: 20px;
+  height: 1.5px;
+  background: #fff;
+  transition: transform 0.35s var(--ease-out);
+}
+.menu-btn:hover i:first-child {
+  transform: translateY(-1px);
+}
+.menu-btn:hover i:last-child {
+  transform: translateY(1px);
+}
+
+/* fullscreen menu (dark, Collins footer aesthetic) */
+.menu-link {
+  font-family: var(--font-serif);
+  font-size: var(--fs-menu);
+  line-height: 1.16;
+  letter-spacing: -0.015em;
+  color: var(--color-cream);
+  text-decoration: none;
+  transition: opacity 0.3s;
+}
+.menu-list:hover .menu-link:not(:hover) {
+  opacity: 0.35;
+}
+
+/* ————— footer (Collins dark) ————— */
+.site-footer {
+  background: var(--color-cocoa);
+  color: var(--color-cream);
+}
+.footer-nav a {
+  display: block;
+  font-family: var(--font-serif);
+  font-size: var(--fs-footer-nav);
+  line-height: 1.18;
+  letter-spacing: -0.015em;
+  color: var(--color-cream);
+  text-decoration: none;
+  transition: opacity 0.3s;
+}
+.footer-nav:hover a:not(:hover) {
+  opacity: 0.4;
+}
+.footer-small {
+  font-size: 14px;
+  color: rgba(244, 239, 233, 0.8);
+  text-decoration: none;
+  transition: color 0.25s;
+}
+.footer-small:hover {
+  color: #fff;
+}
+.email-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(244, 239, 233, 0.35);
+  border-radius: 999px;
+  padding: 9px 16px;
+}
+.email-field input {
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--color-cream);
+  font-size: 14px;
+  width: 160px;
+}
+.email-field input::placeholder {
+  color: rgba(244, 239, 233, 0.5);
+}
+
+/* ————— route transitions (View Transitions API) —————
+   Incoming page slides up and covers the outgoing one, which
+   recedes and dims beneath it — same language as the story sheet. */
+/* the sliding page needs its own opaque ground, otherwise the outgoing
+   page shows through it during the transition */
+.route-sheet {
+  background: var(--page-bg);
+  min-height: 100svh;
+}
+/* the shell (header/footer/ground) stays put — the sheet moves under it */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-image-pair(root) {
+  isolation: auto; /* no cross-fade blending between the two snapshots */
+}
+/* outgoing page: recedes and dims, stays visible beneath */
+::view-transition-group(.page-out) {
+  z-index: 0;
+}
+::view-transition-old(.page-out) {
+  animation: page-recede 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+  mix-blend-mode: normal;
+}
+/* incoming page: slides up over the top */
+::view-transition-group(.page-in) {
+  z-index: 1;
+}
+::view-transition-new(.page-in) {
+  animation: page-cover 0.72s cubic-bezier(0.22, 1, 0.36, 1) both;
+  mix-blend-mode: normal;
+}
+@keyframes page-cover {
+  from {
+    transform: translateY(100vh);
+    clip-path: inset(0 0 0 0 round 22px 22px 0 0);
+  }
+  to {
+    transform: translateY(0);
+    clip-path: inset(0 0 0 0 round 0 0 0 0);
+  }
+}
+@keyframes page-recede {
+  from {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  to {
+    transform: scale(0.955);
+    filter: brightness(0.68);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(.page-out),
+  ::view-transition-new(.page-in) {
+    animation: none;
+  }
+}
+
+/* ————— story overlay (slide-up sheet) ————— */
+:root {
+  --story-gap: 34px;
+}
+/* dim layer over the receding page */
+.story-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 7, 0, 0.42);
+  z-index: 0;
+}
+.story-gap {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--story-gap);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  z-index: 1;
+}
+/* page recedes while the story is open */
+.story-open main,
+.story-open .site-footer {
+  transform: scale(0.965);
+  transform-origin: 50% 0;
+  transition: transform 0.6s var(--ease-out);
+}
+main,
+.site-footer {
+  transition: transform 0.6s var(--ease-out);
+}
+.story-sheet {
+  position: absolute;
+  inset: var(--story-gap) 0 0 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--color-paper);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -20px 60px rgba(20, 7, 0, 0.18);
+  z-index: 2;
+}
+.story-close {
+  position: sticky;
+  float: right;
+  top: 20px;
+  right: 20px;
+  margin-right: 20px;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border: 0;
+  cursor: pointer;
+  color: var(--color-ink);
+  background: #fff;
+  box-shadow: 0 2px 14px rgba(20, 7, 0, 0.14);
+  transition: transform 0.35s var(--ease-out), background 0.25s;
+  z-index: 3;
+}
+.story-close:hover {
+  transform: scale(1.08);
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+/* ————— scroll-tint sections ————— */
+.tint-scope .label,
+.tint-scope .thesis {
+  transition: color 0.7s;
+}
+.tint-scope .pill {
+  transition: background-color 0.7s, color 0.7s,
+    transform 0.45s var(--ease-out);
+}
+.tint-scope .poster--ghost {
+  transition: border-color 0.7s;
+}
+.tint-dark .label,
+.tint-dark .thesis {
+  color: var(--color-cream);
+}
+.tint-dark .pill {
+  background: var(--color-cream);
+  color: var(--color-ink);
+}
+.tint-dark .poster--ghost {
+  border-color: rgba(244, 239, 233, 0.35);
+}
+.ghost-label {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.3;
+  color: var(--color-mute);
+  padding: 20px;
+  transition: color 0.7s;
+}
+.tint-dark .ghost-label {
+  color: rgba(244, 239, 233, 0.65);
+}
+
+/* ————— misc ————— */
+.footer-link {
+  color: var(--color-mute);
+  text-decoration: none;
+  transition: color 0.25s;
+}
+.footer-link:hover {
+  color: var(--color-ink);
+}
+.rail {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px var(--gutter);
+}
+@media (min-width: 900px) {
+  .rail {
+    grid-template-columns: minmax(0, 24fr) minmax(0, 76fr);
+  }
+}
+
+.todo-chip {
+  display: inline-block;
+  font-size: 11.5px;
+  letter-spacing: 0.03em;
+  color: var(--color-mute);
+  border: 1px dashed var(--color-ghost);
+  border-radius: 999px;
+  padding: 4px 11px;
+}
+.on-dark .todo-chip {
+  color: rgba(244, 239, 233, 0.5);
+  border-color: rgba(244, 239, 233, 0.25);
+}
+
+.ph {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, #ececea 0%, #e2e0dd 55%, #d8d6d2 100%);
+  display: grid;
+  place-items: center;
+}
+.ph--dark {
+  background: linear-gradient(145deg, #2c1c10 0%, #1c0e04 60%, #120801 100%);
+}
+.ph__tag {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  z-index: 2;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--color-mute);
+  border: 1px dashed rgba(133, 129, 125, 0.55);
+  border-radius: 999px;
+  padding: 4px 11px;
+  background: rgba(248, 248, 247, 0.55);
+  backdrop-filter: blur(4px);
+}
+.ph--dark .ph__tag {
+  color: #b8b2ac;
+  background: rgba(20, 7, 0, 0.4);
+}
+.ph__mark {
+  font-family: var(--font-serif);
+  font-size: clamp(30px, 4vw, 60px);
+  color: rgba(133, 129, 125, 0.3);
+  user-select: none;
+}
+
+.prose-ed {
+  color: var(--color-body);
+  line-height: 1.55;
+}
+.prose-ed p + p {
+  margin-top: 1.2em;
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+/* ————————————————————————————————————————
+   MOBILE — calibrated to Collins' phone layout:
+   centred wordmark, tall portrait showreel, larger
+   display type, stacked rows, 2-up poster grids.
+   ———————————————————————————————————————— */
+@media (max-width: 700px) {
+  :root {
+    --fs-hero: clamp(42px, 11vw, 52px);
+    --fs-thesis: clamp(30px, 7.6vw, 36px);
+    --fs-list: clamp(26px, 6.8vw, 32px);
+    --fs-section: clamp(26px, 6.6vw, 32px);
+    --fs-lede: clamp(24px, 6vw, 30px);
+    --fs-menu: clamp(34px, 9vw, 44px);
+    --fs-footer-nav: clamp(34px, 9vw, 44px);
+    --pad-section: clamp(56px, 14vw, 80px);
+    --pad-row: 18px;
+  }
+
+  /* centred wordmark, menu button pinned right */
+  .site-header {
+    justify-content: center;
+  }
+  .site-header .menu-btn {
+    position: absolute;
+    right: var(--inset);
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .logo {
+    height: 19px;
+  }
+
+  /* showreel becomes a tall portrait card */
+  .deck__front {
+    aspect-ratio: 3/4.4;
+  }
+  .ph__tag,
+  .band__chip {
+    max-width: calc(100% - 24px);
+    font-size: 11px;
+    white-space: normal;
+  }
+
+  /* rows: name over promise, roomier tap targets */
+  .row {
+    gap: 6px;
+    padding: 22px 0;
+  }
+  .row__arrow {
+    display: none;
+  }
+  .rows--glide .row.is-on .row__name {
+    padding-left: 14px;
+  }
+  .rows--glide .glider {
+    left: calc(-0.6 * var(--inset));
+    right: calc(-0.6 * var(--inset));
+  }
+
+  /* filmstrips: bigger cards, ~1.4 in view to invite the swipe */
+  .strip {
+    gap: 12px;
+  }
+  .strip--bar {
+    padding-bottom: 32px;
+  }
+  .poster {
+    width: min(66vw, 300px) !important;
+    aspect-ratio: 3/4 !important;
+  }
+  .strip--media > * {
+    width: min(78vw, 340px) !important;
+  }
+
+  /* work index: 2-up grid instead of the desktop collage */
+  .work-head {
+    text-align: left;
+  }
+  /* both rows flatten into one continuous 2-up grid (no orphan cells) */
+  .work-collage {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding-left: var(--inset);
+    padding-right: var(--inset);
+  }
+  .collage-row {
+    display: contents;
+  }
+  .collage-row > * {
+    width: 100% !important;
+    aspect-ratio: 1/1.15 !important;
+  }
+
+  /* notes: 2-up cards */
+  .notes-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 26px 12px;
+  }
+  .note-card__title {
+    font-size: 14px;
+    margin-top: 10px;
+  }
+  /* title-only captions on the phone, like Collins' Collaborations grid */
+  .note-card .meta {
+    display: none;
+  }
+
+  /* studio: tighter process rail */
+  .psteps {
+    padding-left: 34px;
+  }
+  .pstep__dot {
+    left: -34px;
+  }
+  .pspine {
+    left: 7px;
+  }
+
+  /* impact + stat cards sized for the phone */
+  .icard {
+    width: min(72vw, 290px);
+    min-height: 250px;
+  }
+}
