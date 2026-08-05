@@ -108,7 +108,7 @@ export const CASES: CaseStudy[] = [
     link: { label: "Full case study", href: "https://vivekchittauria.com/rapid_qs" },
     media: [
       { src: "/cases/rapidqs/hero.jpg", alt: "RapidQS homepage hero", ratio: "3/2" },
-      { src: "/cases/rapidqs/mobile.jpg", alt: "RapidQS hero on mobile", ratio: "1/1" },
+      { src: "/cases/rapidqs/mobile.jpg", alt: "RapidQS hero on mobile", ratio: "3/2" },
       { src: "/cases/rapidqs/services.jpg", alt: "Redesigned services section", ratio: "3/2" },
       { src: "/cases/rapidqs/pricing.jpg", alt: "Restructured pricing categories", ratio: "3/2" },
       { src: "/cases/rapidqs/navigation.jpg", alt: "Simplified navigation", ratio: "3/2" },
