@@ -146,6 +146,8 @@ export const CASES: CaseStudy[] = [
     },
     tint: "a",
     aspect: "4/5",
+    // real thumbnail supplied; story/metrics still to be written
+    poster: "/cases/case-02/poster.jpg",
   },
   {
     slug: "case-03",
@@ -178,6 +180,8 @@ export const CASES: CaseStudy[] = [
     },
     tint: "e",
     aspect: "1/1",
+    // real thumbnail supplied; story/metrics still to be written
+    poster: "/cases/case-03/poster.jpg",
   },
   {
     slug: "case-04",
