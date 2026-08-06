@@ -47,8 +47,8 @@ export const HOME = {
   /** "cycle" = hover-swaps the last word · "glitch" = WebGL shader hero */
   heroMode: "cycle" as "cycle" | "glitch",
 
-  // wide on desktop, portrait on mobile — supply both crops if you can
-  heroMedia: "[Showreel or hero image — drop it here]",
+  // The media deck now plays the showreel. Its cut lives in lib/reel.ts and
+  // the files are built by scripts/build-reel.sh.
 
   programsLabel: "What We Do",
   programsThesis:

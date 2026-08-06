@@ -7,7 +7,7 @@ import HeroGlitch from "@/components/HeroGlitch";
 import GlideRows from "@/components/GlideRows";
 import TintSection from "@/components/TintSection";
 import ScrollGrow from "@/components/ScrollGrow";
-import HeroShader from "@/components/HeroShader";
+import HeroReel from "@/components/HeroReel";
 import Poster from "@/components/Poster";
 
 /* Home — mirrors wearecollins.com section-for-section:
@@ -30,13 +30,12 @@ export default function Home() {
         )}
       </section>
 
-      {/* ————— Media deck: stacked reel card ————— */}
+      {/* ————— Media deck: the showreel ————— */}
       <section className="pt-6">
         <ScrollGrow from={0.78} wipe>
           <div className="deck">
             <div className="deck__front">
-              <HeroShader className="absolute inset-0" />
-              <span className="ph__tag">{HOME.heroMedia}</span>
+              <HeroReel />
             </div>
           </div>
         </ScrollGrow>
