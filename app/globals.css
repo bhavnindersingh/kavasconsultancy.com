@@ -1396,3 +1396,22 @@ html.lenis body {
     min-height: 250px;
   }
 }
+
+/* ————— hero: lock the cycling word to its own line on phones —————
+   "Own your advantage." fits one line, "Own your data." fits one line, but
+   between 320px and 490px the longer words wrap and the shorter ones don't,
+   so the hero jumped between one and two lines every few seconds as the word
+   cycled. Measured across every viewport in that range and all five words —
+   at 495px and above the line count is already stable at one, which is why
+   this stops at 520px instead of riding the 700px mobile breakpoint.
+
+   Making the slot a block-level grid pushes it onto its own line: the lead
+   words fall into an anonymous block above it, so the count is always two,
+   whatever word is showing. The `layout` tween on the slot goes quiet here
+   because a full-width box has no width to animate — which is the point.
+   It still runs on desktop, where the line stays centred and unbroken. */
+@media (max-width: 520px) {
+  .hero-cycle {
+    display: grid;
+  }
+}
