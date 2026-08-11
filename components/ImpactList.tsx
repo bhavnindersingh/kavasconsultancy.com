@@ -9,8 +9,11 @@ gsap.registerPlugin(ScrollTrigger, useGSAP);
 
 /**
  * Collins "Our Programs Deliver Impact" pattern:
- * ghost serif lines that ink up one at a time as they cross
- * the middle of the viewport.
+ * ghost serif lines that ink up one at a time as they rise past the
+ * reading line — and STAY inked. Reverting them on the way out left the
+ * whole list greyed once the section was behind you, which reads as
+ * disabled text rather than as a finished reveal. Scrolling back up
+ * still resets, so the reveal replays.
  */
 export default function ImpactList({ lines }: { lines: string[] }) {
   const ref = useRef<HTMLUListElement>(null);
@@ -32,9 +35,9 @@ export default function ImpactList({ lines }: { lines: string[] }) {
       items.forEach((item) => {
         ScrollTrigger.create({
           trigger: item,
-          start: "top 58%",
-          end: "bottom 42%",
-          onToggle: (self) => item.classList.toggle("is-active", self.isActive),
+          start: "top 62%",
+          onEnter: () => item.classList.add("is-active"),
+          onLeaveBack: () => item.classList.remove("is-active"),
         });
       });
     },

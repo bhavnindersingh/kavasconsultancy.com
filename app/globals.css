@@ -659,6 +659,26 @@ body {
   overflow: hidden;
   background: linear-gradient(160deg, #2c1c10 0%, #1c0e04 55%, #120801 100%);
 }
+.band__img {
+  object-fit: cover;
+  object-position: center 42%;
+}
+/* The studio photo is bright (white walls, pale concrete) and the band's
+   type sits bottom-left in cream, so the scrim is doing real legibility
+   work, not styling. Measured against the composited frame: the darkest
+   stop must hold through the bottom third, where the desk and papers are
+   near-white. Re-measure if the photo is swapped. */
+.band__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(20, 7, 0, 0.94) 0%,
+    rgba(20, 7, 0, 0.9) 26%,
+    rgba(20, 7, 0, 0.6) 55%,
+    rgba(20, 7, 0, 0.14) 100%
+  );
+}
 .band__chip {
   position: absolute;
   right: var(--gutter);

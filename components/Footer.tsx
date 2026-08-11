@@ -1,14 +1,19 @@
 import Link from "next/link";
-import { FOOTER, SITE } from "@/lib/content";
+import { FOOTER, NAV, SITE } from "@/lib/content";
 
 /** Collins-pattern footer: dark cocoa, giant centred serif nav,
- *  pill + small links, newsletter left / socials right. */
+ *  pill, newsletter left / socials right.
+ *
+ *  The nav is derived from NAV — same items, same labels, same order as
+ *  the header menu — so the two can't disagree. */
 export default function Footer() {
+  const bigNav = NAV.filter((n) => !FOOTER.bigNavExclude.includes(n.href));
+
   return (
     <footer className="site-footer">
       <div className="wrap flex min-h-[70svh] flex-col items-center justify-center py-24 text-center">
         <nav className="footer-nav">
-          {FOOTER.bigNav.map((n) => (
+          {bigNav.map((n) => (
             <Link key={n.href} href={n.href}>
               {n.name}
             </Link>
@@ -19,17 +24,6 @@ export default function Footer() {
           <Link href={FOOTER.pill.href} className="pill pill--white">
             {FOOTER.pill.name}
           </Link>
-          {FOOTER.small.map((s) =>
-            s.href.startsWith("mailto") ? (
-              <a key={s.name} href={s.href} className="footer-small">
-                {s.name}
-              </a>
-            ) : (
-              <Link key={s.name} href={s.href} className="footer-small">
-                {s.name}
-              </Link>
-            )
-          )}
         </div>
       </div>
 

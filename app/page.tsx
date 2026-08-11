@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { HOME, PROGRAMS } from "@/lib/content";
+import Image from "next/image";
+import { HOME, PROGRAMS, PROGRAMS_PAGE } from "@/lib/content";
 import { CASES } from "@/lib/cases";
 import Reveal, { Word } from "@/components/Reveal";
 import HeroStatement from "@/components/HeroStatement";
@@ -28,6 +29,9 @@ export default function Home() {
         ) : (
           <HeroStatement line={HOME.hero} cycle={HOME.heroCycle} />
         )}
+        <Reveal y delay={0.25}>
+          <p className="meta mt-6 max-w-[26em]">{HOME.heroDek}</p>
+        </Reveal>
       </section>
 
       {/* ————— Media deck: the showreel ————— */}
@@ -51,28 +55,24 @@ export default function Home() {
             </span>
           ))}
         </Reveal>
+        <p className="meta mt-7 max-w-[34em]">{PROGRAMS_PAGE.makes}</p>
         <Reveal y delay={0.1}>
-          <Link href="/what-we-do" className="pill mt-7">
+          <Link href="/what-we-do" className="pill mt-9">
             {HOME.programsCta}
           </Link>
         </Reveal>
 
+        {/* All five, each landing on the section that explains it —
+            the row is a question the reader recognises, not a pitch. */}
         <div className="mt-14">
           <GlideRows
-            items={PROGRAMS.slice(0, 4).map((p) => ({
+            items={PROGRAMS.map((p) => ({
               name: p.name,
-              sub: p.promise,
-              href: "/what-we-do",
+              sub: p.when,
+              href: `/what-we-do#${p.slug}`,
             }))}
           />
         </div>
-        <Link
-          href="/what-we-do"
-          className="footer-link mt-5 inline-block text-[13px]"
-          style={{ color: "var(--color-ink)", textDecoration: "none" }}
-        >
-          See all {PROGRAMS.length} →
-        </Link>
       </section>
 
       {/* ————— Case Studies: thesis + poster filmstrip ————— */}
@@ -123,14 +123,23 @@ export default function Home() {
       {/* ————— Lab: full-bleed image banner, same wipe as hero ————— */}
       <ScrollGrow from={0.78} wipe radiusTo={0}>
         <Link href="/lab" className="band block no-underline">
-          <div className="inset flex min-h-[78svh] flex-col justify-end pb-16 on-dark">
+          <Image
+            src="/lab/studio.webp"
+            alt={HOME.labImageAlt}
+            fill
+            sizes="100vw"
+            className="band__img"
+          />
+          {/* the photo is bright; the scrim is what keeps the cream
+              type legible over it — see .band__scrim in globals.css */}
+          <span className="band__scrim" aria-hidden />
+          <div className="inset relative z-10 flex min-h-[78svh] flex-col justify-end pb-16 on-dark">
             <p className="label">{HOME.labLabel}</p>
             <p className="serif mt-2" style={{ fontSize: "var(--fs-thesis)" }}>
               {HOME.labLine}
             </p>
             <span className="pill pill--white mt-6 w-fit">{HOME.labCta}</span>
           </div>
-          <span className="band__chip">{HOME.labChip}</span>
         </Link>
       </ScrollGrow>
     </>
