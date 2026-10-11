@@ -9,8 +9,9 @@ import { isAdminConfigured, supabaseAdmin } from "@/lib/workspace/supabase-admin
  * Lives outside app/(workspace) because the cron calls the production domain,
  * not work.: the proxy passes /api/* through untouched.
  *
- * Each person who wants it gets one email with what's overdue, due today, due
- * in the next week, and — for board owners — what's waiting for sign-off.
+ * Each person who wants it gets one email: what's overdue, due today, has no
+ * deadline, is due in the next week, and — for board owners — what's waiting
+ * for sign-off. Partners also see every deadline that moved yesterday.
  * Nothing to say, no email. Resend's idempotency key makes a retried run safe.
  */
 export async function GET(request: NextRequest) {
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
   const db = supabaseAdmin();
 
   const [p, bd] = await Promise.all([
-    db.from("profiles").select("id, email, full_name").eq("is_active", true).eq("email_digest", true),
+    db.from("profiles").select("id, email, full_name, role").eq("is_active", true).eq("email_digest", true),
     db.from("task_boards").select("id, name, owner_id").eq("is_archived", false),
   ]);
   // A failed read must fail the run (and show in Vercel's cron log), never
@@ -44,6 +45,22 @@ export async function GET(request: NextRequest) {
     .neq("status", "done");
   if (taskError) return NextResponse.json({ error: taskError.message }, { status: 500 });
 
+  // Deadlines moved yesterday (IST), for partners — as in the manager's digest.
+  // A date set for the first time isn't a move; a removed one is.
+  const yStart = new Date(`${istDate(-1)}T00:00:00+05:30`).toISOString();
+  const yEnd = new Date(`${today}T00:00:00+05:30`).toISOString();
+  const { data: moves } = await db
+    .from("task_events")
+    .select("task_id, actor_name, from_value, to_value, created_at, task:tasks!inner(title, board_id)")
+    .eq("field", "due_date")
+    .not("from_value", "is", null)
+    .gte("created_at", yStart)
+    .lt("created_at", yEnd)
+    .order("seq");
+  const moved = ((moves ?? []) as unknown as { task_id: string; actor_name: string; from_value: string; to_value: string | null; task: { title: string; board_id: string } | { title: string; board_id: string }[] }[])
+    .map((m) => ({ ...m, task: Array.isArray(m.task) ? m.task[0] : m.task }))
+    .filter((m) => m.task && boardName.has(m.task.board_id));
+
   let sent = 0;
   for (const person of people) {
     const mine = (tasks ?? []).filter((t) => t.assignee_id === person.id);
@@ -58,17 +75,45 @@ export async function GET(request: NextRequest) {
     const soon = mine.filter((t) => t.due_date && t.due_date > today && t.due_date <= weekOut).sort(byDue);
     const owned = new Set(boards.filter((b) => b.owner_id === person.id).map((b) => b.id));
     const signOff = (tasks ?? []).filter((t) => t.status === "quality_check" && owned.has(t.board_id) && t.assignee_id !== person.id);
+    const undated = mine.filter((t) => !t.due_date);
+    const slips = person.role === "partner" ? moved : [];
 
-    if (!overdue.length && !dueToday.length && !signOff.length) continue;
+    if (!overdue.length && !dueToday.length && !signOff.length && !undated.length && !slips.length) continue;
 
     const blocks: Block[] = [];
     if (overdue.length) blocks.push({ kind: "list", title: `Overdue (${overdue.length})`, items: overdue.map((t) => item(t, `was due ${pretty(t.due_date!)}`, true)) });
     if (dueToday.length) blocks.push({ kind: "list", title: `Due today (${dueToday.length})`, items: dueToday.map((t) => item(t, "due today")) });
     if (signOff.length) blocks.push({ kind: "list", title: `Waiting for your sign-off (${signOff.length})`, items: signOff.map((t) => item(t, "in Quality check")) });
+    if (undated.length)
+      blocks.push({ kind: "list", title: `No deadline (${undated.length}) — it can never be late, so nobody is told to chase it`, items: undated.map((t) => item(t, "no due date")) });
     if (soon.length) blocks.push({ kind: "list", title: "Coming up this week", items: soon.slice(0, 6).map((t) => item(t, `due ${pretty(t.due_date!)}`)) });
+    if (slips.length)
+      blocks.push({
+        kind: "list",
+        title: `Deadlines moved yesterday (${slips.length})`,
+        items: slips.map((m) => {
+          const slip = m.to_value ? Math.round((Date.parse(m.to_value) - Date.parse(m.from_value)) / 86_400_000) : null;
+          const to = m.to_value ? `${pretty(m.to_value)} (${slip! > 0 ? "+" : ""}${slip}d)` : "removed";
+          return {
+            label: m.task.title,
+            meta: `${boardName.get(m.task.board_id)} · ${pretty(m.from_value)} → ${to} · by ${m.actor_name}`,
+            href: `${origin}/tasks?task=${m.task_id}`,
+            late: !m.to_value || (slip ?? 0) > 0,
+          };
+        }),
+      });
 
     const name = (person.full_name || person.email).split(" ")[0];
-    const counts = [overdue.length && `${overdue.length} overdue`, dueToday.length && `${dueToday.length} due today`, signOff.length && `${signOff.length} to sign off`].filter(Boolean).join(", ");
+    const counts =
+      [
+        overdue.length && `${overdue.length} overdue`,
+        dueToday.length && `${dueToday.length} due today`,
+        signOff.length && `${signOff.length} to sign off`,
+        undated.length && `${undated.length} with no deadline`,
+        slips.length && `${slips.length} deadline${slips.length === 1 ? "" : "s"} moved`,
+      ]
+        .filter(Boolean)
+        .join(", ") || "nothing urgent";
     const { html, text } = renderEmail({
       heading: `Good morning, ${name}`,
       blocks: [{ kind: "text", text: `Here’s what needs you today — ${counts}.` }, ...blocks],

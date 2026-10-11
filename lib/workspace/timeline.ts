@@ -143,3 +143,68 @@ export function reschedule(t: Dated, mode: DragMode, delta: number): Dated {
   if (mode === "start") return { start_date: fromDay(Math.min(s.start + delta, s.end)), due_date: t.due_date };
   return { start_date: t.start_date, due_date: fromDay(Math.max(s.end + delta, s.start)) };
 }
+
+// ── Longest chain ──────────────────────────────────────────────────────────
+
+/**
+ * The run of dependent work that sets the finish date: the path through the
+ * dependency graph with the most days in it (each task's inclusive span).
+ * Only scheduled tasks count; an edge to an undated task breaks the chain.
+ * Returns task ids and edge keys ("task_id>depends_on_task_id"), or empty sets
+ * when no chain of at least two tasks exists.
+ */
+export function longestChain(
+  tasks: (Dated & { id: string })[],
+  deps: { task_id: string; depends_on_task_id: string }[],
+): { tasks: Set<string>; edges: Set<string> } {
+  const len = new Map<string, number>();
+  for (const t of tasks) {
+    const s = spanOf(t);
+    if (s) len.set(t.id, s.end - s.start + 1);
+  }
+  const preds = new Map<string, string[]>();
+  for (const d of deps) {
+    if (!len.has(d.task_id) || !len.has(d.depends_on_task_id)) continue;
+    preds.set(d.task_id, [...(preds.get(d.task_id) ?? []), d.depends_on_task_id]);
+  }
+  // best[id] = longest chain ending at id; the DB guarantees no cycles, the
+  // `seen` set keeps a malformed graph from recursing forever regardless.
+  const best = new Map<string, { total: number; prev: string | null }>();
+  const seen = new Set<string>();
+  const visit = (id: string): number => {
+    const known = best.get(id);
+    if (known) return known.total;
+    if (seen.has(id)) return len.get(id) ?? 0;
+    seen.add(id);
+    let top = 0;
+    let prev: string | null = null;
+    for (const p of preds.get(id) ?? []) {
+      const v = visit(p);
+      if (v > top) {
+        top = v;
+        prev = p;
+      }
+    }
+    const total = top + (len.get(id) ?? 0);
+    best.set(id, { total, prev });
+    return total;
+  };
+  let end: string | null = null;
+  let max = 0;
+  for (const id of len.keys()) {
+    const v = visit(id);
+    if (v > max) {
+      max = v;
+      end = id;
+    }
+  }
+  const chain = new Set<string>();
+  const edges = new Set<string>();
+  for (let id = end; id; ) {
+    chain.add(id);
+    const prev: string | null = best.get(id)?.prev ?? null;
+    if (prev) edges.add(`${id}>${prev}`);
+    id = prev;
+  }
+  return chain.size >= 2 ? { tasks: chain, edges } : { tasks: new Set(), edges: new Set() };
+}

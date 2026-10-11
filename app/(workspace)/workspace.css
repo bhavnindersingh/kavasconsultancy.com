@@ -97,3 +97,20 @@ body {
   color: var(--color-body);
 }
 }
+
+/* The task drawer's facts rail: full width when stacked on phones, the
+   viewer's chosen width (saved per browser) beside the record on desktop. */
+@media (min-width: 768px) {
+  .ws-facts {
+    width: var(--rail, 380px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

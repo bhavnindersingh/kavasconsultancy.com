@@ -25,25 +25,36 @@ export type Profile = {
 export const TASK_STATUSES = ["todo", "in_progress", "blocked", "quality_check", "done"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
+// Labels as in the Conscious Cafe manager. `blocked` reads "On Hold": the
+// value is kept, the word is gentler and covers "paused" as well as "stuck".
 export const STATUS_LABEL: Record<TaskStatus, string> = {
-  todo: "To do",
-  in_progress: "In progress",
-  blocked: "Blocked",
-  quality_check: "Quality check",
+  todo: "To Do",
+  in_progress: "In Progress",
+  blocked: "On Hold",
+  quality_check: "Quality Check",
   done: "Done",
 };
 
-export const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+/** Display order, most pressing first. */
+export const TASK_PRIORITIES = ["urgent", "high", "medium", "low"] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+export const PRIORITY_LABEL: Record<TaskPriority, string> = { urgent: "Urgent", high: "High", medium: "Medium", low: "Low" };
+
+/** The eight board colours. The first is the default (the DB default too). */
+export const BOARD_COLORS = ["#26532b", "#2563eb", "#0891b2", "#059669", "#d97706", "#dc2626", "#7c3aed", "#716d63"] as const;
 
 export type TaskBoard = {
   id: string;
   name: string;
   description: string | null;
   owner_id: string | null;
+  color: string;
   is_archived: boolean;
   sort_order: number;
   created_by: string | null;
+  /** Open (not done) tasks, from an embedded count; absent if it didn't load. */
+  open_count?: number;
 };
 
 export type Task = {
@@ -59,11 +70,12 @@ export type Task = {
   progress: number;
   sort_order: number;
   completed_at: string | null;
+  created_by?: string | null;
   created_at: string;
 };
 
 export type TaskSubtask = { id: string; task_id: string; title: string; is_done: boolean; sort_order: number };
-export type TaskComment = { id: string; task_id: string; author_id: string | null; body: string; created_at: string };
+export type TaskComment = { id: string; task_id: string; author_id: string | null; body: string; created_at: string; edited_at: string | null };
 
 /** "task_id waits on depends_on_task_id". */
 export type TaskDependency = { task_id: string; depends_on_task_id: string };
@@ -90,7 +102,7 @@ export type StoredFile = {
   file_size: number | null;
   created_at: string;
 };
-export type TaskFile = StoredFile & { task_id: string };
+export type TaskFile = StoredFile & { task_id: string; uploaded_by: string | null };
 
 // ── Documents ──────────────────────────────────────────────────────────────
 
