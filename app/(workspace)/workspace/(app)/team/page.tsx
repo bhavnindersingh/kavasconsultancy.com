@@ -18,12 +18,17 @@ export default async function TeamPage() {
     .order("full_name");
 
   // Last sign-in lives on the auth user, which only the admin API can read.
-  const lastSignIn = new Map<string, string | null>();
+  // So does whether an invite is still waiting to be accepted.
+  const auth = new Map<string, { last: string | null; pending: boolean }>();
   if (isAdminConfigured) {
     const { data } = await supabaseAdmin().auth.admin.listUsers({ perPage: 1000 });
-    data?.users.forEach((u) => lastSignIn.set(u.id, u.last_sign_in_at ?? null));
+    data?.users.forEach((u) => auth.set(u.id, { last: u.last_sign_in_at ?? null, pending: !u.email_confirmed_at }));
   }
 
-  const members: TeamMember[] = (profiles ?? []).map((p) => ({ ...p, last_sign_in_at: lastSignIn.get(p.id) ?? null }));
+  const members: TeamMember[] = (profiles ?? []).map((p) => ({
+    ...p,
+    last_sign_in_at: auth.get(p.id)?.last ?? null,
+    invite_pending: auth.get(p.id)?.pending ?? false,
+  }));
   return <TeamApp members={members} adminReady={isAdminConfigured} />;
 }

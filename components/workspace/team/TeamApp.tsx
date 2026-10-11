@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addMember, setMemberPassword, updateMember, type ActionResult } from "@/app/(workspace)/workspace/(app)/team/actions";
+import { addMember, sendAccessEmail, setMemberPassword, updateMember, type ActionResult } from "@/app/(workspace)/workspace/(app)/team/actions";
 import { MIN_PASSWORD, type Profile, type Role } from "@/lib/workspace/types";
 import Modal from "../Modal";
 import { useWorkspace } from "../WorkspaceContext";
 
-export type TeamMember = Profile & { created_at?: string; last_sign_in_at: string | null };
+export type TeamMember = Profile & { created_at?: string; last_sign_in_at: string | null; invite_pending: boolean };
 
 export default function TeamApp({ members, adminReady }: { members: TeamMember[]; adminReady: boolean }) {
   const { me } = useWorkspace();
@@ -17,15 +17,24 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  function run(action: () => Promise<ActionResult>, done?: string) {
+  function run<R extends ActionResult>(action: () => Promise<R>, done?: string | ((r: R) => string)) {
     setError(null);
     setNotice(null);
     start(async () => {
       const r = await action();
       if (!r.ok) setError(r.error);
-      else if (done) setNotice(done);
+      else if (done) setNotice(typeof done === "string" ? done : done(r));
     });
   }
+
+  const emailAccess = (m: TeamMember) =>
+    run(
+      () => sendAccessEmail(m.id),
+      (r) =>
+        r.ok && r.sent === "invite"
+          ? `Invite sent again to ${m.email}.`
+          : `Sent ${m.email} a link to choose a new password. It works for an hour.`,
+    );
 
   const active = members.filter((m) => m.is_active);
   const inactive = members.filter((m) => !m.is_active);
@@ -64,6 +73,7 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
         adminReady={adminReady}
         onEdit={setEditing}
         onPassword={setPasswordFor}
+        onEmail={emailAccess}
         onRole={(m, role) => run(() => updateMember(m.id, { role }), `${label(m)} is now a ${role}.`)}
         onActive={(m, is_active) => run(() => updateMember(m.id, { is_active }), `${label(m)} has been deactivated.`)}
       />
@@ -81,6 +91,7 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
             adminReady={adminReady}
             onEdit={setEditing}
             onPassword={setPasswordFor}
+            onEmail={emailAccess}
             onRole={(m, role) => run(() => updateMember(m.id, { role }))}
             onActive={(m, is_active) => run(() => updateMember(m.id, { is_active }), `${label(m)} can sign in again.`)}
           />
@@ -90,9 +101,13 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
       {adding && (
         <AddDialog
           onClose={() => setAdding(false)}
-          onAdded={(email) => {
+          onAdded={(email, invited) => {
             setAdding(false);
-            setNotice(`${email} can sign in now. Send them the password you set, somewhere private.`);
+            setNotice(
+              invited
+                ? `Invite sent to ${email}. They’ll choose their own password from the link.`
+                : `${email} can sign in now. Send them the password you set, somewhere private.`,
+            );
           }}
         />
       )}
@@ -122,7 +137,9 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
 
 const label = (m: Profile) => m.full_name || m.email;
 
-function lastSeen(at: string | null) {
+function lastSeen(m: TeamMember) {
+  const at = m.last_sign_in_at;
+  if (m.invite_pending) return "Invited — hasn’t accepted yet";
   if (!at) return "Never signed in";
   return `Last in ${new Date(at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
 }
@@ -134,6 +151,7 @@ function MemberTable({
   adminReady,
   onEdit,
   onPassword,
+  onEmail,
   onRole,
   onActive,
 }: {
@@ -143,6 +161,7 @@ function MemberTable({
   adminReady: boolean;
   onEdit: (m: TeamMember) => void;
   onPassword: (m: TeamMember) => void;
+  onEmail: (m: TeamMember) => void;
   onRole: (m: TeamMember, role: Role) => void;
   onActive: (m: TeamMember, active: boolean) => void;
 }) {
@@ -156,7 +175,7 @@ function MemberTable({
               {m.id === meId && <span className="text-mute text-sm"> (you)</span>}
             </div>
             <div className="truncate text-xs text-mute">
-              {m.email} · {lastSeen(m.last_sign_in_at)}
+              {m.email} · {lastSeen(m)}
             </div>
           </div>
           <select
@@ -171,6 +190,11 @@ function MemberTable({
           </select>
           <div className="flex flex-wrap gap-2">
             <button className="ws-btn" disabled={pending} onClick={() => onEdit(m)}>Rename</button>
+            {m.is_active && (
+              <button className="ws-btn" disabled={pending || !adminReady} onClick={() => onEmail(m)}>
+                {m.invite_pending ? "Resend invite" : "Email sign-in link"}
+              </button>
+            )}
             <button className="ws-btn" disabled={pending || !adminReady} onClick={() => onPassword(m)}>Set password</button>
             {m.is_active ? (
               m.id !== meId && (
@@ -214,10 +238,11 @@ function PasswordField({ value, onChange, id }: { value: string; onChange: (v: s
   );
 }
 
-function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (email: string) => void }) {
+function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (email: string, invited: boolean) => void }) {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<Role>("member");
+  const [mode, setMode] = useState<"invite" | "password">("invite");
   const [password, setPassword] = useState(suggestPassword);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -230,8 +255,8 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (email:
           e.preventDefault();
           setError(null);
           start(async () => {
-            const r = await addMember({ email, fullName, role, password });
-            if (r.ok) onAdded(email.trim().toLowerCase());
+            const r = await addMember({ email, fullName, role, password: mode === "password" ? password : undefined });
+            if (r.ok) onAdded(email.trim().toLowerCase(), mode === "invite");
             else setError(r.error);
           });
         }}
@@ -251,17 +276,38 @@ function AddDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (email:
             <option value="partner">Partner — everything</option>
           </select>
         </div>
-        <div>
-          <label className="ws-label" htmlFor="m-password">Starting password</label>
-          <PasswordField id="m-password" value={password} onChange={setPassword} />
-          <p className="text-xs text-mute mt-1">
-            Copy it before you save. They can change it under My account once they’re in.
-          </p>
-        </div>
+        <fieldset>
+          <legend className="ws-label">How they get in</legend>
+          <div className="space-y-2 text-sm">
+            <label className="flex items-start gap-2">
+              <input type="radio" name="m-mode" className="mt-1" checked={mode === "invite"} onChange={() => setMode("invite")} />
+              <span>
+                Email them an invite <span className="text-mute">— they choose their own password. Recommended.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input type="radio" name="m-mode" className="mt-1" checked={mode === "password"} onChange={() => setMode("password")} />
+              <span>
+                Set a password now <span className="text-mute">— you pass it on yourself.</span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+        {mode === "password" && (
+          <div>
+            <label className="ws-label" htmlFor="m-password">Starting password</label>
+            <PasswordField id="m-password" value={password} onChange={setPassword} />
+            <p className="text-xs text-mute mt-1">
+              Copy it before you save. They can change it under My account once they’re in.
+            </p>
+          </div>
+        )}
         {error && <p className="text-sm text-[#b42318]" role="alert">{error}</p>}
         <div className="flex justify-end gap-2">
           <button type="button" className="ws-btn" onClick={onClose}>Cancel</button>
-          <button type="submit" className="ws-btn ws-btn--primary" disabled={pending}>{pending ? "Adding…" : "Add"}</button>
+          <button type="submit" className="ws-btn ws-btn--primary" disabled={pending}>
+            {pending ? (mode === "invite" ? "Sending…" : "Adding…") : mode === "invite" ? "Send invite" : "Add"}
+          </button>
         </div>
       </form>
     </Modal>

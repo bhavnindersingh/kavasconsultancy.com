@@ -14,6 +14,10 @@ export type Profile = {
   role: Role;
   is_active: boolean;
   created_at?: string;
+  /** Task emails: assigned to you, comments, ready for sign-off. */
+  email_notifications?: boolean;
+  /** The morning digest of overdue and due-today work. */
+  email_digest?: boolean;
 };
 
 // ── Tasks ──────────────────────────────────────────────────────────────────

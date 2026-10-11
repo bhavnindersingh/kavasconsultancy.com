@@ -1,6 +1,9 @@
 "use server";
 
+import { createClient } from "@supabase/supabase-js";
 import { refresh } from "next/cache";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/workspace/env";
+import { workspaceOrigin } from "@/lib/workspace/mailer";
 import { supabaseAdmin } from "@/lib/workspace/supabase-admin";
 import { currentProfile, supabaseServer } from "@/lib/workspace/supabase-server";
 import { MIN_PASSWORD, type Role } from "@/lib/workspace/types";
@@ -33,7 +36,12 @@ function passwordProblem(password: string) {
   return null;
 }
 
-export async function addMember(input: { email: string; fullName: string; role: Role; password: string }): Promise<ActionResult> {
+/**
+ * Adds a person. With no password they get an invite email and choose their
+ * own (the default); with one, they can sign in straight away and the partner
+ * passes the password on.
+ */
+export async function addMember(input: { email: string; fullName: string; role: Role; password?: string }): Promise<ActionResult> {
   if (!(await asPartner())) return fail("Only a partner can add people");
   const email = String(input.email ?? "").trim().toLowerCase();
   const fullName = String(input.fullName ?? "").trim();
@@ -41,15 +49,15 @@ export async function addMember(input: { email: string; fullName: string; role: 
   if (!EMAIL.test(email)) return fail("Enter a valid email address");
   if (!fullName) return fail("Enter their name");
   if (!ROLES.includes(input.role)) return fail("Pick a role");
-  const weak = passwordProblem(password);
-  if (weak) return fail(weak);
+  if (password) {
+    const weak = passwordProblem(password);
+    if (weak) return fail(weak);
+  }
 
-  const { data, error } = await supabaseAdmin().auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name: fullName },
-  });
+  const admin = supabaseAdmin().auth.admin;
+  const { data, error } = password
+    ? await admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: fullName } })
+    : await admin.inviteUserByEmail(email, { data: { full_name: fullName }, redirectTo: `${await workspaceOrigin()}/auth/confirm` });
   if (error) return fail(error.message);
 
   // The profile row is made by the handle_new_user trigger as a member.
@@ -117,4 +125,31 @@ export async function setMemberPassword(userId: string, password: string): Promi
   const { error } = await supabaseAdmin().auth.admin.updateUserById(userId, { password: String(password) });
   if (error) return fail(error.message);
   return { ok: true };
+}
+
+/**
+ * Emails someone a way in: their invite again if they never accepted it, a
+ * choose-a-new-password link otherwise. The dependable "I can't get in"
+ * button — the person doesn't need to remember which they had.
+ */
+export async function sendAccessEmail(userId: string): Promise<ActionResult & { sent?: "invite" | "reset" }> {
+  if (!(await asPartner())) return fail("Only a partner can send sign-in emails");
+  if (!UUID.test(userId)) return fail("Unknown person");
+  const admin = supabaseAdmin().auth.admin;
+  const { data, error } = await admin.getUserById(userId);
+  if (error || !data.user?.email) return fail(error?.message ?? "Unknown person");
+  const user = data.user;
+  const email = data.user.email;
+  if (user.banned_until && new Date(user.banned_until) > new Date()) return fail("Reactivate them first");
+
+  const redirectTo = `${await workspaceOrigin()}/auth/confirm`;
+  if (!user.email_confirmed_at) {
+    const { error: inviteError } = await admin.inviteUserByEmail(email, { redirectTo });
+    if (!inviteError) return { ok: true, sent: "invite" };
+  }
+  // The public endpoint, so Supabase's own rate limit and email template apply.
+  const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+  const { error: resetError } = await anon.auth.resetPasswordForEmail(email, { redirectTo });
+  if (resetError) return fail(resetError.status === 429 ? "Too many emails just now — try again in a few minutes" : resetError.message);
+  return { ok: true, sent: "reset" };
 }

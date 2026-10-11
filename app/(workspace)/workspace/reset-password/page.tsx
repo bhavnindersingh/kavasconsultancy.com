@@ -27,5 +27,5 @@ export default async function ResetPasswordPage() {
       </div>
     );
   }
-  return <ResetPasswordForm email={profile.email} />;
+  return <ResetPasswordForm email={profile.email} name={profile.full_name} welcome={store.get(RECOVERY_COOKIE)?.value === "invite"} />;
 }

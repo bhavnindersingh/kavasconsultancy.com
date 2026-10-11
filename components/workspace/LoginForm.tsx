@@ -56,7 +56,7 @@ export default function LoginForm({ notice = null }: { notice?: LoginNotice }) {
     // The same words whether or not the address has an account, so this form
     // can't be used to find out who works here. Rate limits are the exception.
     if (error && error.status === 429) return setError("Too many reset emails just now. Try again in an hour, or ask a partner.");
-    setMessage("If that address has an account, a reset link is on its way. Open it in this browser.");
+    setMessage("If that address has an account, a reset link is on its way. It works on any device, for an hour.");
   }
 
   return (

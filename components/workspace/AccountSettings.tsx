@@ -13,6 +13,19 @@ export default function AccountSettings() {
 
   const [name, setName] = useState(me.full_name ?? "");
   const [nameState, setNameState] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState({ email_notifications: me.email_notifications !== false, email_digest: me.email_digest !== false });
+  const [prefsState, setPrefsState] = useState<string | null>(null);
+
+  async function togglePref(key: keyof typeof prefs) {
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next);
+    setPrefsState(null);
+    const { error } = await supabase.from("profiles").update({ [key]: next[key] }).eq("id", me.id);
+    if (error) {
+      setPrefs(prefs);
+      setPrefsState(error.message);
+    } else setPrefsState("Saved.");
+  }
 
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -68,6 +81,27 @@ export default function AccountSettings() {
         </div>
         {nameState && <p className="text-sm text-mute mt-2" role="status">{nameState}</p>}
       </form>
+
+      <section className="mb-10">
+        <h2 className="text-sm font-medium mb-3">Email me</h2>
+        <div className="space-y-3 text-sm">
+          <label className="flex items-start gap-3">
+            <input type="checkbox" className="mt-1" checked={prefs.email_notifications} onChange={() => togglePref("email_notifications")} />
+            <span>
+              When something needs me
+              <span className="block text-xs text-mute">A task is assigned to me, someone comments on my task, or a task on my board is ready for sign-off.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3">
+            <input type="checkbox" className="mt-1" checked={prefs.email_digest} onChange={() => togglePref("email_digest")} />
+            <span>
+              A morning digest
+              <span className="block text-xs text-mute">Around 8am IST: what’s overdue, what’s due today, and what’s waiting for my sign-off. Skipped on days with nothing.</span>
+            </span>
+          </label>
+        </div>
+        {prefsState && <p className="text-sm text-mute mt-2" role="status">{prefsState}</p>}
+      </section>
 
       <form onSubmit={changePassword} className="space-y-4">
         <h2 className="text-sm font-medium">Change password</h2>

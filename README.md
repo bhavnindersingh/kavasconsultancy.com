@@ -101,10 +101,11 @@ Setup:
 
 1. Link the CLI and apply the migrations:
    `supabase link --project-ref <ref>` then `supabase db push`.
-2. Set three variables in `.env.local` and in Vercel:
+2. Set these in `.env.local` and in Vercel (see `.env.example`):
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key)
-   - `SUPABASE_SECRET_KEY` (server only; needed for the Team page)
+   - `SUPABASE_SECRET_KEY` (server only; Team page and digest)
+   - `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET`, `WORKSPACE_URL` (email)
 3. In Vercel, add the domain `work.kavasconsultancy.com` to this project.
 4. In Supabase → Authentication:
    - turn off public sign-ups
@@ -122,11 +123,33 @@ People:
 - To remove someone, deactivate them on the Team page rather than deleting
   them. Their history stays, and their login is banned. The database won't
   let the last active partner be demoted or deactivated.
-- "Forgot password?" on the sign-in page emails a reset link. On Supabase's
-  built-in email service, those emails reach only members of the Supabase
-  organisation, and at most 2 an hour. Add custom SMTP (Authentication →
-  Emails) before relying on it. Until then, a partner sets a new password from
-  the Team page.
+- People are added by email invite (the default): they choose their own
+  password from the link. "Set a password now" is still there for when email
+  isn't an option.
+
+Email (Resend):
+
+- **Sign-in emails** (invites, password resets, sign-in links) are sent by
+  Supabase Auth through Resend's SMTP, using the branded templates in
+  `supabase/templates/`. Their links carry a `token_hash` to `/auth/confirm`,
+  so they work on any device.
+- **Work emails** are sent by the app through Resend's API
+  (`lib/workspace/mailer.ts`):
+  - a task is assigned to you
+  - a new comment on your task
+  - a task on your board is ready for sign-off
+  - the morning digest, sent by Vercel Cron to `/api/cron/digest` at 02:30 UTC
+    (about 08:00 IST)
+
+  Each person can switch both off under My account.
+- The sender is `no-reply@kavasconsultancy.com`, so the domain must stay
+  verified in Resend (DKIM and SPF records on Hostinger).
+- Server env vars: `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET` and
+  `WORKSPACE_URL`. Without `RESEND_API_KEY`, emails are logged to the console
+  instead of sent, which is what local dev wants.
+- Supabase only accepts custom templates on the free plan once custom SMTP is
+  set: Authentication → Emails → SMTP, host `smtp.resend.com`, port 465, user
+  `resend`, password = the Resend key.
 
 Changing the schema: add a new file with `supabase migration new <name>`,
 then `supabase db push`. Never edit a migration that has already been

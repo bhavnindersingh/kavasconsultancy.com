@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { notifyReadyForSignOff } from "@/app/(workspace)/workspace/(app)/tasks/actions";
 import { errorText } from "@/lib/workspace/files";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
 import {
@@ -22,7 +23,7 @@ import { PriorityDot, dueLabel } from "./bits";
 type View = "board" | "list" | "timeline" | "people";
 const VIEW_LABEL: Record<View, string> = { board: "Board", list: "List", timeline: "Timeline", people: "People" };
 
-export default function TasksApp() {
+export default function TasksApp({ initialTaskId = null }: { initialTaskId?: string | null }) {
   const { me, people, nameOf } = useWorkspace();
   const supabase = supabaseBrowser();
 
@@ -79,6 +80,29 @@ export default function TasksApp() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- refetch on board switch
     loadTasks();
   }, [loadTasks]);
+
+  // Opened from an email link: find the task's board, switch to it, open it.
+  useEffect(() => {
+    if (!initialTaskId) return;
+    let cancelled = false;
+    supabase
+      .from("tasks")
+      .select("id, board_id")
+      .eq("id", initialTaskId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (!data) return setError("That task no longer exists.");
+        setView((v) => (v === "people" ? "board" : v));
+        setBoardId(data.board_id);
+        setOpenTask({ id: data.id, boardId: data.board_id });
+      });
+    // Drop ?task= so a reload doesn't reopen it.
+    window.history.replaceState(null, "", window.location.pathname);
+    return () => {
+      cancelled = true;
+    };
+  }, [initialTaskId, supabase]);
 
   // Live: someone else changed a board, or a task / link on this board.
   useLive("boards", ["task_boards"], () => true, loadBoards);
@@ -153,6 +177,7 @@ export default function TasksApp() {
       );
       // The completion trigger may have changed progress/completed_at.
       if (moving.status !== status) loadTasks();
+      if (status === "quality_check" && moving.status !== status) notifyReadyForSignOff(taskId).catch(() => {});
     } catch (e) {
       setTasks(prev);
       setError(errorText(e));

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { notifyAssigned, notifyComment, notifyReadyForSignOff } from "@/app/(workspace)/workspace/(app)/tasks/actions";
 import { errorText, formatBytes, objectKey, openObject, removeObjects, uploadObject } from "@/lib/workspace/files";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
 import {
@@ -130,6 +131,9 @@ export default function TaskDrawer({
     setTask(data as Task);
     onChanged(data as Task);
     refreshEvents();
+    // Emails, fire and forget: the save has landed whatever happens to them.
+    if (fields.assignee_id && fields.assignee_id !== prev.assignee_id) notifyAssigned(task.id).catch(() => {});
+    if (fields.status === "quality_check" && prev.status !== "quality_check") notifyReadyForSignOff(task.id).catch(() => {});
   }
 
   async function refreshEvents() {
@@ -176,6 +180,7 @@ export default function TaskDrawer({
     if (error) return setError(error.message);
     setComments((c) => [...c, data as TaskComment]);
     setComment("");
+    notifyComment((data as TaskComment).id).catch(() => {});
   }
 
   async function removeComment(id: string) {
