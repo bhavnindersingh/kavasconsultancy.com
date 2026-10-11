@@ -63,3 +63,72 @@ Measurements mirror wearecollins.com (type sizes, gutters, section pads).
 - Don't run `next build` while `next dev` is running (corrupts `.next`).
 - Don't set `--font-serif`/`--font-sans` fallbacks in `:root` — they
   override the `next/font` variables.
+
+## Workspace — work.kavasconsultancy.com
+
+An internal tool served by this same app on the `work.` subdomain:
+
+- **Tasks**: boards with Board, List, Timeline (Gantt) and People views, plus
+  subtasks, comments, files, "waits on" dependencies, an activity trail,
+  board-owner sign-off and live updates between people.
+- **Documents**: a nested folder cabinet.
+- **Accounts**: the partners' ledger of salaries, purchases, personal and
+  company spend, with GST, receipts and CSV export.
+- **Team**: partners add people, set roles and passwords, and deactivate
+  people.
+- **My account**: everyone can rename themselves and change their password.
+
+Tasks and Documents follow the Conscious Cafe manager; Accounts follows
+Nightingale's Account Management.
+
+How it's wired:
+
+- `proxy.ts` rewrites any `work.*` host to `app/(workspace)/workspace/*`, so
+  `work.kavasconsultancy.com/tasks` renders `/workspace/tasks`. Hitting
+  `/workspace/*` on the main domain redirects to the subdomain. Workspace links
+  are subdomain-relative (`/tasks`). The marketing `/work` case studies are
+  unrelated.
+- The marketing site lives in the `app/(site)` route group, and the workspace
+  has its own root layout (no Lenis, header or page transitions).
+- Data, auth, files and live updates are on Supabase. Schema, RLS, triggers,
+  storage buckets and the realtime publication are in `supabase/migrations/`.
+  RLS is the security boundary. The UI hiding a page is only a convenience.
+- The Team page's server actions use `SUPABASE_SECRET_KEY`, which bypasses
+  RLS. Each action checks that the caller is an active partner first. Never
+  give that key a `NEXT_PUBLIC_` prefix.
+
+Setup:
+
+1. Link the CLI and apply the migrations:
+   `supabase link --project-ref <ref>` then `supabase db push`.
+2. Set three variables in `.env.local` and in Vercel:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (the publishable key)
+   - `SUPABASE_SECRET_KEY` (server only; needed for the Team page)
+3. In Vercel, add the domain `work.kavasconsultancy.com` to this project.
+4. In Supabase → Authentication:
+   - turn off public sign-ups
+   - set the Site URL to `https://work.kavasconsultancy.com`
+   - add `https://work.kavasconsultancy.com/**` and
+     `http://work.localhost:3340/**` to the redirect URLs, for reset links
+5. Create the first partner by hand: Users → Add user → Create new user, then
+   `UPDATE profiles SET role = 'partner' WHERE email = '…';`.
+   Add everyone else from the workspace's Team page.
+6. Locally, open `http://work.localhost:3340` (Chrome resolves `*.localhost`).
+
+People:
+
+- Members get Tasks. Partners also get Documents, Accounts and Team.
+- To remove someone, deactivate them on the Team page rather than deleting
+  them. Their history stays, and their login is banned. The database won't
+  let the last active partner be demoted or deactivated.
+- "Forgot password?" on the sign-in page emails a reset link. On Supabase's
+  built-in email service, those emails reach only members of the Supabase
+  organisation, and at most 2 an hour. Add custom SMTP (Authentication →
+  Emails) before relying on it. Until then, a partner sets a new password from
+  the Team page.
+
+Changing the schema: add a new file with `supabase migration new <name>`,
+then `supabase db push`. Never edit a migration that has already been
+applied, and don't change the schema from the dashboard. The files are the
+record of what's in the database.

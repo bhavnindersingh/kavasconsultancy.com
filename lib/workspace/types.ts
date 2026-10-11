@@ -1,0 +1,145 @@
+// Row shapes for supabase/migrations/ (20261010000000_workspace.sql and later).
+// Keep them in step with the migration — the CHECK constraints there are the
+// source of truth for every enum below.
+
+export type Role = "partner" | "member";
+
+/** Shortest password the Team and Account pages accept (Supabase allows 6). */
+export const MIN_PASSWORD = 8;
+
+export type Profile = {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: Role;
+  is_active: boolean;
+  created_at?: string;
+};
+
+// ── Tasks ──────────────────────────────────────────────────────────────────
+
+export const TASK_STATUSES = ["todo", "in_progress", "blocked", "quality_check", "done"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+export const STATUS_LABEL: Record<TaskStatus, string> = {
+  todo: "To do",
+  in_progress: "In progress",
+  blocked: "Blocked",
+  quality_check: "Quality check",
+  done: "Done",
+};
+
+export const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+export type TaskBoard = {
+  id: string;
+  name: string;
+  description: string | null;
+  owner_id: string | null;
+  is_archived: boolean;
+  sort_order: number;
+  created_by: string | null;
+};
+
+export type Task = {
+  id: string;
+  board_id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignee_id: string | null;
+  start_date: string | null;
+  due_date: string | null;
+  progress: number;
+  sort_order: number;
+  completed_at: string | null;
+  created_at: string;
+};
+
+export type TaskSubtask = { id: string; task_id: string; title: string; is_done: boolean; sort_order: number };
+export type TaskComment = { id: string; task_id: string; author_id: string | null; body: string; created_at: string };
+
+/** "task_id waits on depends_on_task_id". */
+export type TaskDependency = { task_id: string; depends_on_task_id: string };
+
+/** One line of a task's activity trail. Values are raw; the drawer labels them. */
+export type TaskEvent = {
+  id: string;
+  seq: number;
+  task_id: string;
+  actor_id: string | null;
+  actor_name: string;
+  action: string;
+  field: string | null;
+  from_value: string | null;
+  to_value: string | null;
+  created_at: string;
+};
+
+export type StoredFile = {
+  id: string;
+  name: string;
+  storage_path: string;
+  mime_type: string | null;
+  file_size: number | null;
+  created_at: string;
+};
+export type TaskFile = StoredFile & { task_id: string };
+
+// ── Documents ──────────────────────────────────────────────────────────────
+
+export type DocumentFolder = { id: string; parent_id: string | null; name: string };
+export type CompanyDocument = StoredFile & { folder_id: string; description: string | null; uploaded_by: string | null };
+
+// ── Accounts ───────────────────────────────────────────────────────────────
+
+export const ACCOUNT_CATEGORIES = ["salary", "purchase", "personal", "company"] as const;
+export type AccountCategory = (typeof ACCOUNT_CATEGORIES)[number];
+
+export const CATEGORY_LABEL: Record<AccountCategory, string> = {
+  salary: "Salaries",
+  purchase: "Purchases",
+  personal: "Personal",
+  company: "Company",
+};
+
+/** A salary or a personal expense is always one partner's. */
+export const PER_PERSON: AccountCategory[] = ["salary", "personal"];
+
+export const CURRENCIES = ["INR", "USD"] as const;
+export type Currency = (typeof CURRENCIES)[number];
+
+export const PAYMENT_METHODS = ["Bank transfer", "UPI", "Card", "Cash", "Cheque", "Other"];
+export const GST_RATES = ["0", "5", "12", "18", "28"];
+export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+export type AccountEntry = {
+  id: string;
+  entry_date: string;
+  category: AccountCategory;
+  party: string | null;
+  description: string;
+  amount: string; // NUMERIC arrives as a string-safe number; treat as decimal text
+  currency: Currency;
+  payment_method: string | null;
+  owner_id: string | null;
+  salary_month: string | null;
+  notes: string | null;
+  paid_from: string | null;
+  reference_no: string | null;
+  payee_account: string | null;
+  bank_narration: string | null;
+  gst_applicable: boolean;
+  vendor_gstin: string | null;
+  invoice_no: string | null;
+  invoice_date: string | null;
+  gst_rate: string | null;
+  taxable_value: string | null;
+  gst_amount: string | null;
+  created_at: string;
+  account_files?: AccountFile[];
+};
+
+export type AccountFile = StoredFile & { entry_id: string };

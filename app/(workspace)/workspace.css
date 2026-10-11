@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/* Workspace (work.kavasconsultancy.com) — same palette and type as the site,
+   but a calm, dense tool surface: no Lenis, no page transitions. */
+@theme inline {
+  --color-paper: #f8f8f7;
+  --color-ink: #140700;
+  --color-body: #4d4a47;
+  --color-mute: #85817d;
+  --color-ghost: #d8d5d1;
+  --color-line: #e4e2df;
+  --color-card: #ffffff;
+  --color-cocoa: #1c0e04;
+  --color-cream: #f4efe9;
+  --font-serif: var(--font-newsreader);
+  --font-sans: var(--font-instrument);
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+/* Form controls share one look. In the components layer so utilities
+   (md:hidden, !w-auto, …) can still override them. */
+@layer components {
+.ws-input {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  background: var(--color-card);
+  border-radius: 10px;
+  padding: 8px 11px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.ws-input:focus {
+  border-color: var(--color-ink);
+}
+.ws-label {
+  display: block;
+  font-size: 12px;
+  color: var(--color-mute);
+  margin-bottom: 4px;
+}
+.ws-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 14px;
+  border: 1px solid var(--color-line);
+  background: var(--color-card);
+  transition: background 0.15s, border-color 0.15s;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ws-btn:hover {
+  border-color: var(--color-ink);
+}
+.ws-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ws-btn--primary {
+  background: var(--color-ink);
+  color: var(--color-paper);
+  border-color: var(--color-ink);
+}
+.ws-btn--primary:hover {
+  background: var(--color-cocoa);
+}
+.ws-btn--danger:hover {
+  border-color: #b42318;
+  color: #b42318;
+}
+.ws-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 12px;
+  background: var(--color-cream);
+  color: var(--color-body);
+}
+}
