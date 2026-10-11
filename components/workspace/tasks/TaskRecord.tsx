@@ -281,7 +281,7 @@ function Files({ taskId, onError }: { taskId: string; onError: (msg: string) => 
           <li key={f.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5">
             <span className="rounded bg-paper px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase text-body">{extOf(f.name) || "file"}</span>
             <div className="min-w-0 flex-1">
-              <div className="truncate text-sm">{f.name}</div>
+              <div className="break-all text-sm">{f.name}</div>
               <div className="text-xs text-mute">
                 {[formatBytes(f.file_size), f.uploaded_by ? nameOf(f.uploaded_by) : null, relativeTime(f.created_at)].filter(Boolean).join(" · ")}
               </div>

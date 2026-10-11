@@ -410,7 +410,7 @@ export default function DocumentsApp() {
                       }}
                     >
                       <FolderIcon size={18} />
-                      <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                      <span className="line-clamp-2 min-w-0 flex-1 break-words leading-snug" title={s.name}>{s.name}</span>
                       <span className="text-xs text-mute">{counts.get(s.id) ?? 0}</span>
                     </button>
                   ))}
@@ -451,14 +451,14 @@ export default function DocumentsApp() {
                             ) : (
                               <button
                                 type="button"
-                                className="block max-w-full truncate text-left text-[15px] hover:underline"
+                                className="block max-w-full break-words text-left text-[15px] hover:underline"
                                 title={kind.viewable ? "Open in a new tab" : `Download as ${kind.label}`}
                                 onClick={() => (kind.viewable ? view(d) : download(d))}
                               >
                                 {d.name}
                               </button>
                             )}
-                            <p className="truncate text-xs text-mute">
+                            <p className="break-words text-xs text-mute">
                               {q && <span className="text-body">{pathOf(d.folder_id)} · </span>}
                               {formatBytes(d.file_size)} ·{" "}
                               {uploader && uploader !== "—" ? `added by ${uploader} on ${formatAdded(d.created_at)}` : `added ${formatAdded(d.created_at)}`}

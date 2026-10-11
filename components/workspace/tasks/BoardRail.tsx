@@ -106,19 +106,21 @@ export default function BoardRail({
                 />
               ) : (
                 <button
-                  className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm"
+                  className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-left text-sm"
                   onClick={() => onSelect(b.id)}
                   onDoubleClick={() => setRenaming(b.id)}
                   aria-current={active ? "page" : undefined}
                 >
-                  <span className="size-2.5 flex-none rounded-full" style={{ background: b.color }} />
-                  <span className="truncate">{b.name}</span>
-                  {!active && typeof b.open_count === "number" && b.open_count > 0 && <span className="ml-auto text-xs text-mute">{b.open_count}</span>}
+                  <span className="mt-1 size-2.5 flex-none self-start rounded-full" style={{ background: b.color }} />
+                  <span className="line-clamp-2 break-words leading-snug" title={b.name}>{b.name}</span>
+                  {!active && typeof b.open_count === "number" && b.open_count > 0 && <span className="ml-auto self-start text-xs text-mute">{b.open_count}</span>}
                 </button>
               )}
 
               {live.length >= 2 && renaming !== b.id && (
-                <span className="flex flex-col opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                <span
+                  className={`flex flex-col rounded-md bg-card ring-1 ring-line [@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:absolute [@media(hover:hover)]:top-1/2 [@media(hover:hover)]:-translate-y-1/2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:pointer-events-auto [@media(hover:hover)]:group-focus-within:opacity-100 ${active ? "[@media(hover:hover)]:right-9" : "[@media(hover:hover)]:right-1"}`}
+                >
                   {([-1, 1] as const).map((dir) => {
                     const end = (dir === -1 && i === 0) || (dir === 1 && i === live.length - 1);
                     return (
@@ -197,7 +199,7 @@ export default function BoardRail({
                       <rect x="2" y="3" width="12" height="3" rx="1" />
                       <path d="M3 6v6.5A1.5 1.5 0 004.5 14h7a1.5 1.5 0 001.5-1.5V6M6.5 9h3" />
                     </svg>
-                    <span className="truncate">{b.name}</span>
+                    <span className="line-clamp-2 break-words leading-snug" title={b.name}>{b.name}</span>
                   </button>
                   <button className="px-1.5 text-xs text-mute hover:text-ink" title="Restore this board" onClick={() => onRestore(b)}>↺</button>
                   <TwoTap

@@ -220,6 +220,7 @@ export default function GanttView({
                   <div key={t.id} className="absolute inset-x-0 flex border-b border-line/70" style={{ top: i * ROW_H, height: ROW_H }}>
                     <button
                       onClick={() => onOpen(t.id)}
+                      title={boardNames ? `${t.title} — ${boardNames.get(t.board_id) ?? ""}` : t.title}
                       className={`sticky left-0 z-10 flex items-stretch gap-2 border-r border-line px-3 py-1.5 text-left text-[13px] hover:bg-paper ${onChain ? "bg-cream" : "bg-card"}`}
                       style={{ width: NAME_W, minWidth: NAME_W }}
                     >

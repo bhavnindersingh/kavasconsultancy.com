@@ -582,7 +582,7 @@ export default function TaskDrawer({
                       {waitsOn.map((d) => (
                         <li key={d.id} className="flex items-center gap-2 text-sm">
                           <span className="text-mute"><LinkIcon /></span>
-                          <span className={`min-w-0 flex-1 truncate ${d.status === "done" ? "text-mute line-through" : ""}`}>{d.title}</span>
+                          <span className={`min-w-0 flex-1 break-words ${d.status === "done" ? "text-mute line-through" : ""}`}>{d.title}</span>
                           <StatusPill status={d.status} label={STATUS_LABEL[d.status]} />
                           <button className="text-mute hover:text-ink" onClick={() => unlink(task.id, d.id)} aria-label={`Stop waiting on ${d.title}`}>✕</button>
                         </li>
@@ -606,7 +606,7 @@ export default function TaskDrawer({
                       <ul className="space-y-1.5">
                         {holdingUp.map((d) => (
                           <li key={d.id} className="flex items-center gap-2 text-sm">
-                            <span className="min-w-0 flex-1 truncate">{d.title}</span>
+                            <span className="min-w-0 flex-1 break-words">{d.title}</span>
                             <StatusPill status={d.status} label={STATUS_LABEL[d.status]} />
                             <button className="text-mute hover:text-ink" onClick={() => unlink(d.id, task.id)} aria-label={`Stop ${d.title} waiting on this task`}>✕</button>
                           </li>

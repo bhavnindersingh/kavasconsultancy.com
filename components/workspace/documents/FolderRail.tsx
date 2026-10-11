@@ -137,7 +137,7 @@ export default function FolderRail({
             <>
               <button
                 type="button"
-                className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+                className="flex min-w-0 flex-1 items-start gap-2 py-1.5 text-left [&>svg]:mt-0.5"
                 aria-current={active ? "true" : undefined}
                 onClick={() => {
                   disarm();
@@ -145,10 +145,17 @@ export default function FolderRail({
                 }}
               >
                 <FolderIcon />
-                <span className="truncate">{folder.name}</span>
+                <span className="line-clamp-2 break-words leading-snug" title={folder.name}>
+                  {folder.name}
+                </span>
               </button>
+              {/* Hover/focus tools float over the row's right edge, so they never
+                  take width from the name. Touch screens have no hover: there
+                  the open folder shows them on a line of their own, below. */}
               <span
-                className={`flex-none items-center gap-0.5 ${active ? "flex" : "hidden md:flex"} md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 ${armed ? "md:!opacity-100" : ""}`}
+                className={`absolute right-1 top-1/2 z-10 -translate-y-1/2 items-center gap-0.5 rounded-lg bg-card px-0.5 py-0.5 shadow-sm ring-1 ring-line [@media(hover:hover)]:flex [@media(hover:none)]:hidden ${
+                  armed ? "opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+                }`}
               >
                 {depth < MAX_DEPTH - 1 && (
                   <IconButton
@@ -202,7 +209,7 @@ export default function FolderRail({
                 >
                   {armed ? "Sure?" : <TrashIcon />}
                 </button>
-              </span>
+                            </span>
               <span
                 className={`ml-1 min-w-5 flex-none rounded-full px-1.5 text-center text-[11px] ${active ? "bg-ink text-paper" : "bg-cream text-body"}`}
                 title={`${counts.get(folder.id) ?? 0} document${(counts.get(folder.id) ?? 0) === 1 ? "" : "s"} directly in this folder`}
@@ -212,6 +219,63 @@ export default function FolderRail({
             </>
           )}
         </div>
+
+        {active && renaming !== folder.id && moving !== folder.id && (
+          <div className="hidden items-center gap-1 pb-1 [@media(hover:none)]:flex" style={{ paddingLeft: 34 + depth * 14 }}>
+                {depth < MAX_DEPTH - 1 && (
+              <IconButton
+                title="New subfolder"
+                label={`New subfolder in ${folder.name}`}
+                onClick={() => {
+                  disarm();
+                  expand(folder.id);
+                  setAddingIn(folder.id);
+                }}
+              >
+                <PlusIcon />
+              </IconButton>
+            )}
+            <IconButton
+              title="Rename folder"
+              label={`Rename folder ${folder.name}`}
+              onClick={() => {
+                disarm();
+                setRenaming(folder.id);
+              }}
+            >
+              <PencilIcon />
+            </IconButton>
+            <IconButton
+              title="Move folder"
+              label={`Move folder ${folder.name}`}
+              onClick={() => {
+                disarm();
+                setMoving(folder.id);
+              }}
+            >
+              <MoveIcon />
+            </IconButton>
+            <button
+              type="button"
+              className={`grid h-6 min-w-6 place-items-center rounded px-1 text-xs ${
+                armed ? "bg-[#fef3f2] font-medium text-[#b42318]" : "text-mute hover:text-[#b42318]"
+              }`}
+              title={
+                armed
+                  ? `Click again to delete this folder, ${hasKids ? "its subfolders and everything in them" : "and everything in it"}`
+                  : "Delete folder"
+              }
+              aria-label={
+                armed
+                  ? `Click again to delete ${folder.name}, ${hasKids ? "its subfolders and everything in them" : "and everything in it"}`
+                  : `Delete folder ${folder.name}`
+              }
+              onClick={() => (armed ? actions.remove(folder) : arm(`folder:${folder.id}`))}
+            >
+              {armed ? "Sure?" : <TrashIcon />}
+            </button>
+                        </div>
+        )}
 
         {addingIn === folder.id && (
           <SubfolderForm

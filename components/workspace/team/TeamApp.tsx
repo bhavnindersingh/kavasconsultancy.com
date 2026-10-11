@@ -170,7 +170,7 @@ function MemberTable({
       {members.map((m) => (
         <div key={m.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
           <div className="min-w-0 flex-1 basis-56">
-            <div className="truncate">
+            <div className="truncate" title={label(m)}>
               {label(m)}
               {m.id === meId && <span className="text-mute text-sm"> (you)</span>}
             </div>
