@@ -28,7 +28,7 @@ Anything in `[square brackets]` anywhere on the site is a placeholder.
 | Studio page (values, team, process) | `lib/content.ts` |
 | Contact page | `lib/content.ts` |
 | The 5 case studies (client, meta, lede, story, metrics, quote) | `lib/cases.ts` |
-| Notes/essays | `lib/notes.ts` |
+| Lab entries | `lib/lab.ts` |
 
 ## Swapping placeholder images for real ones
 
@@ -41,14 +41,16 @@ panels with a dashed label chip). To use a real image:
    inside a `div` with the same `aspectRatio` style — or just keep the
    `Placeholder` wrapper and add an `<img>` inside it.
 
-The home hero panel is a live WebGL ink-wash (`components/HeroShader.tsx`).
-Keep it, or replace that block in `app/page.tsx` with a real reel/photo.
+The home hero headline is either a WebGL glitch (`components/HeroGlitch.tsx`,
+which loads three.js lazily) or a cycling statement, picked by
+`HOME.heroMode` in `lib/content.ts`. The reel under it is
+`components/HeroReel.tsx`.
 
 ## Design tokens
 
 `app/globals.css` — colors (`--color-paper/ink/…`), type scale
 (`--fs-*`), rhythm (`--gutter`, `--pad-section`). Fonts are set in
-`app/layout.tsx` (Newsreader serif + Instrument Sans).
+`app/(site)/layout.tsx` (Newsreader serif + Instrument Sans).
 Measurements mirror wearecollins.com (type sizes, gutters, section pads).
 
 ## Known template stubs (wire up before launch)
@@ -145,8 +147,8 @@ Email (Resend):
 - The sender is `no-reply@kavasconsultancy.com`, so the domain must stay
   verified in Resend (DKIM and SPF records on Hostinger).
 - Server env vars: `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET` and
-  `WORKSPACE_URL`. Without `RESEND_API_KEY`, emails are logged to the console
-  instead of sent, which is what local dev wants.
+  `WORKSPACE_URL`. Without `RESEND_API_KEY`, each email is noted in one console
+  line instead of sent, which is what local dev wants.
 - Supabase only accepts custom templates on the free plan once custom SMTP is
   set: Authentication → Emails → SMTP, host `smtp.resend.com`, port 465, user
   `resend`, password = the Resend key.
