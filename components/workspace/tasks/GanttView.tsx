@@ -86,7 +86,9 @@ export default function GanttView({
     const d = dragRef.current;
     if (!d) return;
     const dx = e.clientX - d.x0;
-    const next = { ...d, moved: d.moved || Math.abs(dx) > 3, delta: Math.round(dx / ppd) };
+    // A click that slips a few pixels must still open the task: at month zoom
+    // a day is 4px, so the threshold scales with the zoom.
+    const next = { ...d, moved: d.moved || Math.abs(dx) >= Math.max(6, ppd / 2), delta: Math.round(dx / ppd) };
     if (next.delta !== d.delta || next.moved !== d.moved) {
       dragRef.current = next;
       setDrag(next);
@@ -97,7 +99,7 @@ export default function GanttView({
     dragRef.current = null;
     setDrag(null);
     if (!d) return;
-    if (!d.moved) return onOpen(t.id);
+    if (!d.moved || !d.delta) return d.moved ? undefined : onOpen(t.id);
     if (d.delta) onReschedule(t.id, reschedule(t, d.mode, d.delta));
   }
   function nudge(e: React.KeyboardEvent, t: Task) {
@@ -171,7 +173,7 @@ export default function GanttView({
                   <div key={s.left} className={`absolute inset-y-0 border-l border-line/70 ${s.weekend ? "bg-paper" : ""}`} style={{ left: s.left, width: s.width }} />
                 ))}
                 {todayDay >= win.start && todayDay <= win.end && (
-                  <div className="absolute inset-y-0 w-0.5" style={{ left: (todayDay - win.start) * ppd + ppd / 2, background: `${LATE}99` }} title={`Today — ${shortDate(today())}`} />
+                  <div className="absolute inset-y-0 w-0.5" style={{ left: (todayDay - win.start) * ppd + ppd / 2, background: "#14070066" }} title={`Today — ${shortDate(today())}`} />
                 )}
               </div>
 
@@ -317,7 +319,7 @@ function Legend({ chain }: { chain: boolean }) {
         </span>
       ))}
       <span className="inline-flex items-center gap-1.5">
-        <span className="inline-block h-3 w-0.5" style={{ background: LATE }} />
+        <span className="inline-block h-3 w-0.5" style={{ background: "#14070066" }} />
         Today
       </span>
       <span className="inline-flex items-center gap-1.5">

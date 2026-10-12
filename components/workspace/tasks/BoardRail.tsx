@@ -23,6 +23,10 @@ export default function BoardRail({
   onRestore,
   onDelete,
   onMove,
+  collapsed = false,
+  onToggleCollapsed,
+  legendOpen = false,
+  onLegendToggle,
 }: {
   boards: TaskBoard[];
   activeId: string | null;
@@ -36,6 +40,11 @@ export default function BoardRail({
   onRestore: (b: TaskBoard) => void;
   onDelete: (b: TaskBoard) => void;
   onMove: (b: TaskBoard, dir: -1 | 1) => void;
+  /** A narrow strip of colour dots, to give the board its width back. */
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
+  legendOpen?: boolean;
+  onLegendToggle?: (open: boolean) => void;
 }) {
   const { me } = useWorkspace();
   const [name, setName] = useState("");
@@ -47,6 +56,40 @@ export default function BoardRail({
   const live = boards.filter((b) => !b.is_archived);
   const archived = boards.filter((b) => b.is_archived);
 
+  if (collapsed)
+    return (
+      <nav aria-label="Boards" className="flex flex-col items-center gap-1.5 rounded-2xl border border-line bg-card px-1 py-2 md:sticky md:top-6">
+        <button className="grid size-8 place-items-center rounded-lg text-mute hover:bg-cream hover:text-ink" title="Show the boards rail ( [ )" aria-label="Show the boards rail" onClick={onToggleCollapsed}>
+          »
+        </button>
+        <button
+          onClick={onPerson}
+          title={personLabel}
+          aria-label={personLabel}
+          aria-current={personMode ? "page" : undefined}
+          className={`grid size-8 place-items-center rounded-lg ${personMode ? "bg-ink" : "hover:bg-cream"}`}
+        >
+          <span className="size-3 rounded-full ring-2 ring-white" style={{ background: personColor(me.id) }} />
+        </button>
+        <span className="my-1 h-px w-6 bg-line" />
+        {live.map((b) => {
+          const active = !personMode && b.id === activeId;
+          return (
+            <button
+              key={b.id}
+              onClick={() => onSelect(b.id)}
+              title={`${b.name}${b.open_count ? ` · ${b.open_count} open` : ""}`}
+              aria-label={b.name}
+              aria-current={active ? "page" : undefined}
+              className={`grid size-8 place-items-center rounded-lg ${active ? "bg-cream ring-1 ring-ink" : "hover:bg-paper"}`}
+            >
+              <span className="size-3 rounded-full" style={{ background: b.color }} />
+            </button>
+          );
+        })}
+      </nav>
+    );
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || creating) return;
@@ -57,14 +100,21 @@ export default function BoardRail({
 
   return (
     <nav aria-label="Boards" className="flex flex-col gap-1 rounded-2xl border border-line bg-card p-2 md:sticky md:top-6 md:max-h-[calc(100vh-3rem)] md:overflow-y-auto">
-      <button
-        onClick={onPerson}
-        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-left text-[15px] ${personMode ? "bg-ink text-paper" : "hover:bg-cream"}`}
-        aria-current={personMode ? "page" : undefined}
-      >
-        <span className="size-2.5 rounded-full" style={{ background: personColor(me.id) }} />
-        {personLabel}
-      </button>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={onPerson}
+          className={`flex flex-1 items-center gap-2 rounded-lg px-3 py-2 text-left text-[15px] ${personMode ? "bg-ink text-paper" : "hover:bg-cream"}`}
+          aria-current={personMode ? "page" : undefined}
+        >
+          <span className="size-2.5 rounded-full" style={{ background: personColor(me.id) }} />
+          {personLabel}
+        </button>
+        {onToggleCollapsed && (
+          <button className="hidden size-8 flex-none place-items-center rounded-lg text-mute hover:bg-cream hover:text-ink lg:grid" title="Hide the boards rail ( [ )" aria-label="Hide the boards rail" onClick={onToggleCollapsed}>
+            «
+          </button>
+        )}
+      </div>
 
       <p className="mt-3 px-3 text-xs text-mute">Boards</p>
       {!live.length && <p className="px-3 py-2 text-sm text-mute">No boards yet. Make one below.</p>}
@@ -119,7 +169,7 @@ export default function BoardRail({
 
               {live.length >= 2 && renaming !== b.id && (
                 <span
-                  className={`flex flex-col rounded-md bg-card ring-1 ring-line [@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:absolute [@media(hover:hover)]:top-1/2 [@media(hover:hover)]:-translate-y-1/2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:pointer-events-auto [@media(hover:hover)]:group-focus-within:opacity-100 ${active ? "[@media(hover:hover)]:right-9" : "[@media(hover:hover)]:right-1"}`}
+                  className={`flex-col rounded-md bg-card ring-1 ring-line ${active ? "flex" : "flex [@media(hover:none)]:hidden"} [@media(hover:hover)]:pointer-events-none [@media(hover:hover)]:absolute [@media(hover:hover)]:top-1/2 [@media(hover:hover)]:-translate-y-1/2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:pointer-events-auto [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:pointer-events-auto [@media(hover:hover)]:group-focus-within:opacity-100 ${active ? "[@media(hover:hover)]:right-9" : "[@media(hover:hover)]:right-1"}`}
                 >
                   {([-1, 1] as const).map((dir) => {
                     const end = (dir === -1 && i === 0) || (dir === 1 && i === live.length - 1);
@@ -218,7 +268,11 @@ export default function BoardRail({
         </div>
       )}
 
-      <details className="mt-4 px-3 pb-2 text-xs text-mute">
+      <details
+        className="mt-4 px-3 pb-2 text-xs text-mute"
+        open={legendOpen}
+        onToggle={(e) => onLegendToggle?.((e.currentTarget as HTMLDetailsElement).open)}
+      >
         <summary className="cursor-pointer select-none">Reading the board</summary>
         <p className="mt-2" style={{ color: LATE }}>Red is late, and red is nothing else.</p>
         <ul className="mt-2 space-y-1">
@@ -239,8 +293,27 @@ export default function BoardRail({
         </ul>
         <p className="mt-2 flex items-center gap-2">
           <span className="size-3 rounded-full" style={{ background: personColor(me.id) }} />
-          A coloured disc is the owner — one colour each, the same everywhere.
+          A coloured disc is who it’s assigned to — one colour each, the same everywhere.
         </p>
+        <p className="mt-3 font-medium text-body">Keys</p>
+        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+          {[
+            ["n", "New task"],
+            ["/", "Search"],
+            ["j / k", "Next / previous task"],
+            ["[", "Hide or show this rail"],
+            ["?", "This legend"],
+            ["Ctrl/⌘ + ← →", "Move a card a column"],
+            ["Ctrl/⌘ + ↑ ↓", "Reorder a card or board"],
+            ["Alt + ← →", "Nudge a bar on the timeline"],
+            ["Ctrl/⌘ + Enter", "Save the task"],
+          ].map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt><kbd className="rounded border border-line bg-paper px-1 font-mono text-[10px] text-ink">{k}</kbd></dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
       </details>
     </nav>
   );

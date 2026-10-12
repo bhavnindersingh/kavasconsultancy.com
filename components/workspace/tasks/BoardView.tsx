@@ -28,6 +28,10 @@ export default function BoardView({
   onNew,
   onMove,
   filtered,
+  canSignOff = true,
+  signOffName = null,
+  flashId = null,
+  boardKey = "",
 }: {
   /** The filtered tasks on screen. */
   tasks: Task[];
@@ -39,6 +43,13 @@ export default function BoardView({
   onMove: (id: string, status: TaskStatus, beforeId: string | null) => void;
   /** True when filters are hiding something (the first-run copy is then wrong). */
   filtered: boolean;
+  /** False on a board someone else signs off: Done is theirs to move into. */
+  canSignOff?: boolean;
+  signOffName?: string | null;
+  /** A card to scroll to and briefly highlight (the one just created). */
+  flashId?: string | null;
+  /** Remembers per board whether Done is unfolded. */
+  boardKey?: string;
 }) {
   const { nameOf } = useWorkspace();
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -46,6 +57,23 @@ export default function BoardView({
   const suppressClick = useRef(false);
   const [adding, setAdding] = useState<TaskStatus | null>(null);
   const [showAllDone, setShowAllDone] = useState(false);
+  // Done is a log, so it folds to a strip by default — the width goes to the
+  // columns with work still in them. Remembered per board, per browser.
+  const doneKey = `ws_done_open:${boardKey}`;
+  const [doneOpen, setDoneOpen] = useState(false);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore a per-viewer preference
+      setDoneOpen(localStorage.getItem(doneKey) === "1");
+    } catch {}
+  }, [doneKey]);
+  const toggleDone = () =>
+    setDoneOpen((o) => {
+      try {
+        localStorage.setItem(doneKey, o ? "0" : "1");
+      } catch {}
+      return !o;
+    });
   const scroller = useRef<HTMLDivElement>(null);
 
   const column = (s: TaskStatus) => {
@@ -61,7 +89,12 @@ export default function BoardView({
     const colEl = el?.closest<HTMLElement>("[data-tk-column]");
     if (!colEl) return { col: null, index: 0 };
     const col = colEl.dataset.tkColumn as TaskStatus;
-    if (col === "done") return { col: d.from === "done" ? null : "done", index: 0 };
+    if (col === "done") {
+      if (d.from === "done") return { col: null, index: 0 };
+      // Not yours to sign off: the drop goes where it will reach the owner.
+      if (!canSignOff) return { col: d.from === "quality_check" ? null : "quality_check", index: column("quality_check").filter((t) => t.id !== d.id).length };
+      return { col: "done", index: 0 };
+    }
     const cardEl = el?.closest<HTMLElement>("[data-tk-index]");
     const cards = column(col).filter((t) => t.id !== d.id);
     if (!cardEl || cardEl.dataset.tkId === d.id) {
@@ -131,7 +164,7 @@ export default function BoardView({
       const to = cols[ci + (e.key === "ArrowLeft" ? -1 : 1)];
       if (!to) return;
       e.preventDefault();
-      if (to === "done") return onMove(t.id, "done", null);
+      if (to === "done") return canSignOff ? onMove(t.id, "done", null) : undefined;
       const target = column(to);
       onMove(t.id, to, target[Math.min(i, target.length)]?.id ?? null);
     }
@@ -141,6 +174,11 @@ export default function BoardView({
       if (e.key === "ArrowDown" && i < own.length - 1) onMove(t.id, t.status, own[i + 2]?.id ?? null);
     }
   }
+
+  useEffect(() => {
+    if (!flashId) return;
+    document.querySelector<HTMLElement>(`[data-tk-id="${flashId}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }, [flashId, tasks]);
 
   // Keep keyboard focus on a card after it moves.
   const focusAfter = useRef<string | null>(null);
@@ -155,12 +193,34 @@ export default function BoardView({
   if (!tasks.length && !filtered) return <FirstRun onAdd={(title) => onNew("todo", title)} />;
 
   return (
-    <div ref={scroller} className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-4 md:mx-0 md:px-0" onPointerMove={move} onPointerUp={up} onPointerCancel={() => {
+    <div ref={scroller} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-4 md:mx-0 md:px-0" onPointerMove={move} onPointerUp={up} onPointerCancel={() => {
       dragRef.current = null;
       setDrag(null);
     }}>
       {TASK_STATUSES.map((status) => {
         const all = column(status);
+        if (status === "done" && !doneOpen) {
+          const over = drag?.started && drag.col === "done";
+          return (
+            <section
+              key={status}
+              data-tk-column="done"
+              aria-label={`Done, ${all.length} — folded`}
+              className={`flex w-12 flex-none flex-col items-center gap-2 rounded-2xl py-3 transition-colors ${over ? "bg-cream ring-2 ring-ink" : "bg-[#efedea]"}`}
+            >
+              <button
+                className="flex flex-1 flex-col items-center gap-2 text-sm text-mute hover:text-ink"
+                onClick={toggleDone}
+                title={!canSignOff ? `Done — ${signOffName ?? "the board owner"} signs off; drops go to Quality Check` : "Show the Done column"}
+                aria-expanded={false}
+              >
+                <StatusDot status="done" />
+                <span className="font-medium text-ink [writing-mode:vertical-rl]">Done</span>
+                <span>{all.length}</span>
+              </button>
+            </section>
+          );
+        }
         const folded = status === "done" && !showAllDone && all.length > DONE_VISIBLE;
         const shown = folded ? all.slice(0, DONE_VISIBLE) : all;
         const target = drag?.started && drag.col === status;
@@ -173,21 +233,34 @@ export default function BoardView({
           <section
             key={status}
             data-tk-column={status}
-            className={`flex w-[272px] min-w-[170px] flex-none flex-col rounded-2xl p-2 transition-colors ${target ? "bg-cream" : "bg-[#efedea]"}`}
+            className={`flex min-w-[196px] max-w-[300px] flex-1 basis-[260px] flex-col rounded-2xl p-2 transition-colors ${target ? "bg-cream" : "bg-[#efedea]"}`}
             aria-label={STATUS_LABEL[status]}
           >
-            <h2 className="flex items-center gap-2 px-2 py-1.5 text-sm font-medium">
+            <h2 className={`sticky top-0 z-10 flex items-center gap-2 rounded-xl px-2 py-1.5 text-sm font-medium ${target ? "bg-cream" : "bg-[#efedea]"}`}>
               <StatusDot status={status} />
               {STATUS_LABEL[status]}
               <span className="font-normal text-mute">{all.length}</span>
-              <button
-                className="ml-auto grid size-6 place-items-center rounded-md text-mute hover:bg-card hover:text-ink"
-                aria-label={`Add a task to ${STATUS_LABEL[status]}`}
-                onClick={() => setAdding(status)}
-              >
-                +
-              </button>
+              {status === "done" && (
+                <button className="ml-auto grid size-6 place-items-center rounded-md text-mute hover:bg-card hover:text-ink" aria-label="Fold the Done column" title="Fold the Done column" onClick={toggleDone}>
+                  ‹
+                </button>
+              )}
+              {status !== "done" && (
+                <button
+                  className="ml-auto grid size-6 place-items-center rounded-md text-mute hover:bg-card hover:text-ink"
+                  aria-label={`Add a task to ${STATUS_LABEL[status]}`}
+                  title={`Add a task to ${STATUS_LABEL[status]}`}
+                  onClick={() => setAdding(status)}
+                >
+                  +
+                </button>
+              )}
             </h2>
+            {status === "done" && !canSignOff && (
+              <p className={`px-2 pb-1 text-xs ${drag?.started ? "text-ink" : "text-mute"}`}>
+                {signOffName ?? "The board owner"} signs off — drops go to Quality Check.
+              </p>
+            )}
 
             {adding === status && <QuickAdd onDone={() => setAdding(null)} onAdd={(title) => onNew(status, title)} />}
 
@@ -203,6 +276,7 @@ export default function BoardView({
                     task={t}
                     index={i}
                     dragging={drag?.started === true && drag.id === t.id}
+                    flash={flashId === t.id}
                     blockers={waiting.get(t.id) ?? []}
                     checklist={checklists.get(t.id)}
                     ownerName={t.assignee_id ? nameOf(t.assignee_id) : null}
@@ -217,7 +291,7 @@ export default function BoardView({
                 );
               })}
               {lineAt >= 0 && lineAt >= others && <DropLine />}
-              {!all.length && adding !== status && (
+              {!all.length && adding !== status && status !== "done" && (
                 <button className="rounded-lg px-2 py-1.5 text-left text-sm text-mute hover:bg-card" onClick={() => setAdding(status)}>
                   + Add a task
                 </button>
@@ -244,6 +318,7 @@ function Card({
   task: t,
   index,
   dragging,
+  flash = false,
   blockers,
   checklist,
   ownerName,
@@ -254,6 +329,7 @@ function Card({
   task: Task;
   index: number;
   dragging: boolean;
+  flash?: boolean;
   blockers: Stub[];
   checklist?: Checklist;
   ownerName: string | null;
@@ -308,12 +384,13 @@ function Card({
     <article
       data-tk-index={index}
       data-tk-id={t.id}
+      role="button"
       tabIndex={0}
       aria-label={`${t.title}${due ? `, due ${due.text}` : ""}`}
       onPointerDown={(e) => onPointerDown(e, false)}
       onClick={onClick}
       onKeyDown={onKeyDown}
-      className={`relative flex cursor-pointer select-none overflow-hidden rounded-xl border bg-card outline-none hover:border-ghost focus-visible:ring-2 focus-visible:ring-ink ${late ? "border-[#f4b8b2]" : "border-line"} ${dragging ? "opacity-40" : ""}`}
+      className={`relative flex cursor-pointer select-none overflow-hidden rounded-xl border bg-card outline-none hover:border-ghost focus-visible:ring-2 focus-visible:ring-ink ${late ? "border-[#f4b8b2]" : "border-line"} ${dragging ? "opacity-40" : ""} ${flash ? "ws-flash" : ""}`}
     >
       <span
         aria-hidden
@@ -361,7 +438,7 @@ function QuickAdd({ onAdd, onDone }: { onAdd: (title: string) => void; onDone: (
         maxLength={200}
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        onBlur={submit}
+        onBlur={() => !title.trim() && onDone()}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.preventDefault();

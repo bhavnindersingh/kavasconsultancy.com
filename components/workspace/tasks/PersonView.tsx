@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { waitingLabel, type Stub } from "@/lib/workspace/tasks";
 import { STATUS_LABEL, type Task } from "@/lib/workspace/types";
-import { LATE, LinkIcon, PriorityBar, StatusPill, daysUntilDue, dueWords } from "./bits";
+import { useWorkspace } from "../WorkspaceContext";
+import { Disc, LATE, LinkIcon, PriorityBar, StatusPill, daysUntilDue, dueWords } from "./bits";
 
 // One person's work across every live board — "what is on me", the question
 // anyone actually opens the app with. Grouped by WHEN, not by board: what a
@@ -22,11 +23,17 @@ const DONE_VISIBLE = 8;
 
 export default function PersonView({
   tasks,
+  awaiting = [],
+  showAssignee = false,
   waiting,
   boardNames,
   onOpen,
 }: {
   tasks: Task[];
+  /** Quality Check work on boards the viewer signs off, whoever it's assigned to. */
+  awaiting?: Task[];
+  /** Everyone's work: say whose each row is. */
+  showAssignee?: boolean;
   waiting: Map<string, Stub[]>;
   boardNames: Map<string, string>;
   onOpen: (task: Task) => void;
@@ -38,13 +45,22 @@ export default function PersonView({
 
   return (
     <div className="max-w-4xl">
+      {awaiting.length > 0 && (
+        <section className="mb-6">
+          <h3 className="mb-2 text-sm font-medium">
+            Awaiting your sign-off <span className="font-normal text-mute">{awaiting.length}</span>
+            <span className="font-normal text-mute"> · Finished work on boards you own. Open it and move it to Done.</span>
+          </h3>
+          <Rows rows={awaiting} waiting={waiting} boardNames={boardNames} onOpen={onOpen} showAssignee />
+        </section>
+      )}
       {groups.map((g) => (
         <section key={g.key} className="mb-6">
           <h3 className="mb-2 text-sm font-medium" style={g.key === "overdue" ? { color: LATE } : undefined}>
             {g.title} <span className="font-normal text-mute">{g.rows.length}</span>
             {g.note && <span className="font-normal text-mute"> · {g.note}</span>}
           </h3>
-          <Rows rows={g.rows} waiting={waiting} boardNames={boardNames} onOpen={onOpen} />
+          <Rows rows={g.rows} waiting={waiting} boardNames={boardNames} onOpen={onOpen} showAssignee={showAssignee} />
         </section>
       ))}
       {done.length > 0 && (
@@ -52,7 +68,7 @@ export default function PersonView({
           <h3 className="mb-2 text-sm font-medium">
             Done <span className="font-normal text-mute">{done.length}</span>
           </h3>
-          <Rows rows={showAllDone ? done : done.slice(0, DONE_VISIBLE)} waiting={waiting} boardNames={boardNames} onOpen={onOpen} />
+          <Rows rows={showAllDone ? done : done.slice(0, DONE_VISIBLE)} waiting={waiting} boardNames={boardNames} onOpen={onOpen} showAssignee={showAssignee} />
           {done.length > DONE_VISIBLE && (
             <button className="mt-2 text-sm text-mute underline underline-offset-2" onClick={() => setShowAllDone((s) => !s)}>
               {showAllDone ? "Show recent only" : `…and ${done.length - DONE_VISIBLE} finished earlier`}
@@ -64,7 +80,20 @@ export default function PersonView({
   );
 }
 
-function Rows({ rows, waiting, boardNames, onOpen }: { rows: Task[]; waiting: Map<string, Stub[]>; boardNames: Map<string, string>; onOpen: (t: Task) => void }) {
+function Rows({
+  rows,
+  waiting,
+  boardNames,
+  onOpen,
+  showAssignee = false,
+}: {
+  rows: Task[];
+  waiting: Map<string, Stub[]>;
+  boardNames: Map<string, string>;
+  onOpen: (t: Task) => void;
+  showAssignee?: boolean;
+}) {
+  const { nameOf } = useWorkspace();
   return (
     <ul className="divide-y divide-line rounded-2xl border border-line bg-card">
       {rows.map((t) => {
@@ -72,7 +101,7 @@ function Rows({ rows, waiting, boardNames, onOpen }: { rows: Task[]; waiting: Ma
         const blockers = waiting.get(t.id) ?? [];
         return (
           <li key={t.id}>
-            <button onClick={() => onOpen(t)} className="flex w-full flex-wrap items-stretch gap-x-3 gap-y-1 px-4 py-2.5 text-left text-sm hover:bg-paper">
+            <button data-tk-row onClick={() => onOpen(t)} className="flex w-full flex-wrap items-stretch gap-x-3 gap-y-1 px-4 py-2.5 text-left text-sm outline-none hover:bg-paper focus-visible:bg-paper focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ink">
               <PriorityBar priority={t.priority} />
               <span className="flex min-w-0 flex-1 basis-60 flex-wrap items-center gap-x-2 gap-y-1">
                 <span className={t.status === "done" ? "text-mute line-through" : ""}>{t.title}</span>
@@ -83,6 +112,12 @@ function Rows({ rows, waiting, boardNames, onOpen }: { rows: Task[]; waiting: Ma
                   </span>
                 )}
               </span>
+              {showAssignee && (
+                <span className="flex items-center gap-1.5 self-center text-xs text-body">
+                  <Disc id={t.assignee_id} name={t.assignee_id ? nameOf(t.assignee_id) : null} size={18} />
+                  {t.assignee_id ? nameOf(t.assignee_id).split(" ")[0] : "Nobody"}
+                </span>
+              )}
               <span className="self-center text-xs text-mute">{boardNames.get(t.board_id) ?? "Board"}</span>
               <span className="self-center"><StatusPill status={t.status} label={STATUS_LABEL[t.status]} /></span>
               <span className="w-24 self-center text-right text-xs whitespace-nowrap">

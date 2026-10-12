@@ -69,7 +69,13 @@ export default function ListView({ tasks, waiting, onOpen }: { tasks: Task[]; wa
                 key={t.id}
                 tabIndex={0}
                 onClick={() => onOpen(t.id)}
-                onKeyDown={(e) => e.key === "Enter" && onOpen(t.id)}
+                data-tk-row
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpen(t.id);
+                  }
+                }}
                 className={`cursor-pointer border-b border-line outline-none last:border-0 hover:bg-paper focus-visible:bg-paper ${late ? "bg-[#fffafa]" : ""}`}
               >
                 <td className="px-4 py-2.5">

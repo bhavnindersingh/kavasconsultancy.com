@@ -114,3 +114,12 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* A just-created task card glows once so the eye finds it. */
+@keyframes ws-flash {
+  0%, 30% { box-shadow: 0 0 0 3px var(--color-cream), 0 0 0 4px var(--color-ghost); background: var(--color-cream); }
+  100% { box-shadow: none; }
+}
+.ws-flash {
+  animation: ws-flash 1.8s ease-out;
+}

@@ -128,6 +128,7 @@ function Discussion({ taskId, onError }: { taskId: string; onError: (msg: string
                   <div className="mt-1">
                     <textarea
                       autoFocus
+                      data-comment-box
                       className="ws-input min-h-20"
                       value={editing.body}
                       onChange={(e) => setEditing({ id: c.id, body: e.target.value })}
@@ -155,6 +156,7 @@ function Discussion({ taskId, onError }: { taskId: string; onError: (msg: string
       <div className="flex flex-col gap-2">
         <textarea
           className="ws-input min-h-20"
+          data-comment-box
           placeholder="Add a comment…"
           aria-label="Add a comment"
           value={draft}

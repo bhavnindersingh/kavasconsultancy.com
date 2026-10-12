@@ -3,9 +3,11 @@ import type { Task, TaskPriority, TaskStatus } from "@/lib/workspace/types";
 // Small shared pieces of the task board: the vocabulary every view uses, so a
 // task reads the same on a card, in the list, on the timeline and in My work.
 
+// Red is late and nothing else, so Urgent is ink, not red; amber is "due
+// soon", so High is a deep orange-brown rather than the soon/QC amber.
 export const PRIORITY_COLOR: Record<TaskPriority, string> = {
-  urgent: "#b42318",
-  high: "#d9822b",
+  urgent: "#140700",
+  high: "#b45309",
   medium: "#8a9bb0",
   low: "#c9c5c0",
 };
@@ -15,7 +17,7 @@ export const STATUS_COLOR: Record<TaskStatus, string> = {
   todo: "#a8a39d",
   in_progress: "#3b6ea8",
   blocked: "#7c3aed",
-  quality_check: "#d9822b",
+  quality_check: "#0f766e",
   done: "#4f8a5b",
 };
 

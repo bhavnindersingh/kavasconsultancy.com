@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** Arms on the first tap, acts on a second within four seconds. */
 export const CONFIRM_MS = 4000;
+/** A second tap sooner than this is a double-click, not a decision. */
+const MIN_GAP_MS = 350;
 
 export default function TwoTap({
   label,
@@ -27,6 +29,7 @@ export default function TwoTap({
   ariaLabel?: string;
 }) {
   const [armed, setArmed] = useState(false);
+  const armedAt = useRef(0);
   useEffect(() => {
     if (!armed) return;
     const t = setTimeout(() => setArmed(false), CONFIRM_MS);
@@ -41,9 +44,13 @@ export default function TwoTap({
       className={`${className} ${armed ? armedClassName : ""}`}
       onClick={() => {
         if (armed) {
+          if (Date.now() - armedAt.current < MIN_GAP_MS) return;
           setArmed(false);
           onConfirm();
-        } else setArmed(true);
+        } else {
+          armedAt.current = Date.now();
+          setArmed(true);
+        }
       }}
     >
       {armed ? armedLabel : label}

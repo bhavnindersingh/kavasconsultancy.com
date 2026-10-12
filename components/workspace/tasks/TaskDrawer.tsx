@@ -17,7 +17,7 @@ import {
 } from "@/lib/workspace/types";
 import { changed, useLive } from "@/lib/workspace/useLive";
 import { useWorkspace } from "../WorkspaceContext";
-import { LinkIcon, PRIORITY_COLOR, StatusDot, StatusPill, fullTime } from "./bits";
+import { LinkIcon, PRIORITY_COLOR, StatusDot, StatusPill, fullTime, shortDate } from "./bits";
 import TaskRecord from "./TaskRecord";
 import TwoTap from "./TwoTap";
 
@@ -26,7 +26,9 @@ import TwoTap from "./TwoTap";
 // rail on the right. Facts are saved explicitly with Save — the checklist and
 // links write as you go.
 
-export type DrawerTarget = { kind: "edit"; id: string } | { kind: "new"; title: string; status: TaskStatus };
+/** A new task may carry defaults forward from the one just created ("Create & add another"). */
+export type NewDefaults = Partial<Pick<Task, "assignee_id" | "priority" | "due_date" | "start_date">>;
+export type DrawerTarget = { kind: "edit"; id: string } | { kind: "new"; title: string; status: TaskStatus; defaults?: NewDefaults };
 
 type Draft = Pick<Task, "title" | "description" | "status" | "priority" | "assignee_id" | "start_date" | "due_date" | "progress">;
 const FIELDS: (keyof Draft)[] = ["title", "description", "status", "priority", "assignee_id", "start_date", "due_date", "progress"];
@@ -35,6 +37,36 @@ const RAIL_KEY = "ws_tasks_rail_width";
 const RAIL_MIN = 280;
 const RAIL_MAX = 560;
 const RAIL_DEFAULT = 380;
+
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const addDays = (n: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return isoOf(d);
+};
+/** The next Friday — a week on if today is Friday. */
+const nextFriday = () => addDays(((5 - new Date().getDay() + 7) % 7) || 7);
+const DUE_SHORTCUTS: { label: string; value: () => string }[] = [
+  { label: "Today", value: () => addDays(0) },
+  { label: "Tomorrow", value: () => addDays(1) },
+  { label: "Fri", value: nextFriday },
+  { label: "+1w", value: () => addDays(7) },
+  { label: "+2w", value: () => addDays(14) },
+];
+
+/**
+ * Arrow keys move the choice within a segmented control, so the whole group
+ * is one Tab stop (a roving tabindex), as a radio group should be.
+ */
+function radioKeys<T>(e: React.KeyboardEvent, options: readonly T[], value: T, pick: (v: T) => void) {
+  const dir = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+  if (!dir) return;
+  e.preventDefault();
+  const next = options[(options.indexOf(value) + dir + options.length) % options.length];
+  pick(next);
+  const group = e.currentTarget as HTMLElement;
+  requestAnimationFrame(() => group.querySelector<HTMLElement>('[aria-checked="true"]')?.focus());
+}
 
 function draftOf(t: Task): Draft {
   return {
@@ -63,14 +95,20 @@ function normalise(d: Draft): Draft {
 export default function TaskDrawer({
   target,
   board,
+  boards,
+  onBoardChange,
   onClose,
   onSaved,
   onDeleted,
 }: {
   target: DrawerTarget;
   board: TaskBoard;
+  /** Live boards, so a new task started from My work can pick where it goes. */
+  boards?: TaskBoard[];
+  onBoardChange?: (boardId: string) => void;
   onClose: () => void;
-  onSaved: (t: Task, created: boolean) => void;
+  /** `again`: the person asked to add another straight after this one. */
+  onSaved: (t: Task, created: boolean, again?: boolean) => void;
   onDeleted: (id: string) => void;
 }) {
   const { me, people, nameOf } = useWorkspace();
@@ -80,9 +118,23 @@ export default function TaskDrawer({
   const [task, setTask] = useState<Task | null>(null);
   const [draft, setDraft] = useState<Draft | null>(
     isNew
-      ? { title: target.title, description: null, status: target.status, priority: "medium", assignee_id: null, start_date: null, due_date: null, progress: 0 }
+      ? {
+          title: target.title,
+          description: null,
+          status: target.status,
+          priority: target.defaults?.priority ?? "medium",
+          // Most new tasks are the creator's own follow-ups.
+          assignee_id: target.defaults?.assignee_id !== undefined ? target.defaults.assignee_id : me.id,
+          start_date: target.defaults?.start_date ?? null,
+          due_date: target.defaults?.due_date ?? null,
+          progress: 0,
+        }
       : null,
   );
+  // A fresh draft doesn't open in an error state: the due-date warning waits
+  // until the person has touched something or tried to save.
+  const [touched, setTouched] = useState(!isNew);
+  const [offerQC, setOfferQC] = useState(false);
   const [subtasks, setSubtasks] = useState<TaskSubtask[]>([]);
   const [waitsOn, setWaitsOn] = useState<Stub[]>([]);
   const [holdingUp, setHoldingUp] = useState<Stub[]>([]);
@@ -194,20 +246,34 @@ export default function TaskDrawer({
 
   const prevFacts = task ? { status: task.status, progress: task.progress } : null;
   const willComplete = draft ? progressCompletes(prevFacts, draft) : false;
+  // At 100%, a task finishes — or, on a board someone else signs off, goes to
+  // Quality Check for them. Only a real finish lets the due date go.
+  const completesToDone = willComplete && canSignOff;
+  const completesToQC = willComplete && !canSignOff;
   const datesBackwards = !!(draft?.start_date && draft?.due_date && draft.due_date < draft.start_date);
-  const missingDue = draft ? needsDueDate(prevFacts, draft) : false;
+  const missingDue = draft ? needsDueDate(prevFacts, draft) || (completesToQC && !draft.due_date) : false;
+  const showDueError = missingDue && touched;
   const unticked = subtasks.filter((s) => !s.is_done).length;
+  const qcFirst = ownerName?.split(" ")[0] ?? "the owner";
 
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => (d ? { ...d, [k]: v } : d));
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
+    setOfferQC(false);
+    setDraft((d) => (d ? { ...d, [k]: v } : d));
+  };
 
-  async function save() {
+  async function save(again = false) {
     if (!draft || saving) return;
+    setTouched(true);
     const next = normalise(draft);
     if (!next.title) return setError("Give the task a title.");
     if (datesBackwards) return setError("The due date is before the start date.");
     if (missingDue) return setError("Every task needs a deadline. Without one it can never be late, so nobody is ever told to chase it.");
-    if (willComplete) next.status = "done";
-    if (next.status === "done" && !canSignOff) return setError(signOffMessage);
+    if (completesToDone) next.status = "done";
+    if (completesToQC) next.status = "quality_check";
+    if (next.status === "done" && !canSignOff) {
+      setOfferQC(true);
+      return setError(signOffMessage);
+    }
     setSaving(true);
     setError(null);
 
@@ -228,7 +294,8 @@ export default function TaskDrawer({
       if (error) return setError(error.message);
       const created = data as Task;
       if (created.assignee_id && created.assignee_id !== me.id) notifyAssigned(created.id).catch(() => {});
-      onSaved(created, true);
+      if (created.status === "quality_check") notifyReadyForSignOff(created.id).catch(() => {});
+      onSaved(created, true, again);
       return;
     }
 
@@ -327,7 +394,17 @@ export default function TaskDrawer({
   return (
     <div className="fixed inset-0 z-50 flex md:p-6" role="dialog" aria-modal="true" aria-label={isNew && !task ? "New task" : "Edit task"}>
       <div className="absolute inset-0 bg-ink/30" onClick={close} />
-      <div className="relative m-auto flex h-full w-full flex-col overflow-hidden bg-paper shadow-2xl md:h-[min(820px,90vh)] md:w-[min(1140px,94vw)] md:rounded-2xl">
+      <div
+        className="relative m-auto flex h-full w-full flex-col overflow-hidden bg-paper shadow-2xl md:h-[min(820px,90vh)] md:w-[min(1140px,94vw)] md:rounded-2xl"
+        onKeyDown={(e) => {
+          // Ctrl/⌘+Enter saves from anywhere in the drawer — except the comment
+          // box, where the same keys post the comment.
+          if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
+          if ((e.target as HTMLElement).closest("[data-comment-box]")) return;
+          e.preventDefault();
+          if (canSave) save(e.shiftKey && !task);
+        }}
+      >
         <header className="flex items-start gap-3 border-b border-line bg-paper px-5 py-3">
           <div className="min-w-0 flex-1">
             {isNew && !task && <p className="text-xs text-mute">New task</p>}
@@ -340,6 +417,12 @@ export default function TaskDrawer({
                 aria-label="Title"
                 value={draft.title}
                 onChange={(e) => set("title", e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || e.ctrlKey || e.metaKey) return;
+                  e.preventDefault();
+                  if (canSave) save();
+                  else setTouched(true);
+                }}
               />
             ) : (
               <p className="font-serif text-2xl text-mute">{error ?? "Loading…"}</p>
@@ -350,8 +433,20 @@ export default function TaskDrawer({
         </header>
 
         {error && (
-          <p className="mx-5 mt-3 rounded-lg bg-[#fef3f2] px-3 py-2 text-sm text-[#b42318]" role="alert">
-            {error} <button className="ml-2 underline" onClick={() => setError(null)}>Dismiss</button>
+          <p className="mx-5 mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-[#fef3f2] px-3 py-2 text-sm text-[#b42318]" role="alert">
+            <span className="flex-1">{error}</span>
+            {offerQC && (
+              <button
+                className="ws-btn !border-[#b42318] !py-1 text-xs !text-[#b42318]"
+                onClick={() => {
+                  set("status", "quality_check");
+                  setError(null);
+                }}
+              >
+                Send to Quality Check instead
+              </button>
+            )}
+            <button className="underline" onClick={() => { setError(null); setOfferQC(false); }}>Dismiss</button>
           </p>
         )}
         {staleNotice && (
@@ -372,7 +467,7 @@ export default function TaskDrawer({
 
         {draft && (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
-            <div className="min-w-0 flex-1 space-y-8 px-5 py-5 md:overflow-y-auto">
+            <div className={`min-w-0 flex-1 space-y-8 px-5 py-5 md:order-none md:overflow-y-auto ${task ? "" : "order-2"}`}>
               <div>
                 <label className="ws-label" htmlFor="t-notes">Notes</label>
                 <AutoGrow
@@ -438,7 +533,7 @@ export default function TaskDrawer({
               aria-valuemin={RAIL_MIN}
               aria-valuemax={RAIL_MAX}
               aria-valuenow={rail}
-              tabIndex={0}
+              tabIndex={-1}
               title="Drag to resize · double-click to reset"
               className="hidden w-1.5 flex-none cursor-col-resize touch-none bg-line/60 hover:bg-ghost focus:bg-ghost md:block"
               onPointerDown={(e) => {
@@ -459,10 +554,26 @@ export default function TaskDrawer({
               }}
             />
 
-            <aside className="ws-facts flex-none space-y-6 border-t border-line bg-card px-5 py-5 md:overflow-y-auto md:border-t-0" style={{ "--rail": `${rail}px` } as React.CSSProperties}>
+            <aside className={`ws-facts flex-none space-y-6 border-line bg-card px-5 py-5 md:order-none md:overflow-y-auto md:border-t-0 ${task ? "border-t" : "order-1 border-b"}`} style={{ "--rail": `${rail}px` } as React.CSSProperties}>
+              {!task && boards && boards.length > 1 && onBoardChange && (
+                <div>
+                  <label className="ws-label" htmlFor="t-board">Board</label>
+                  <select id="t-board" className="ws-input" value={board.id} onChange={(e) => onBoardChange(e.target.value)}>
+                    {boards.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
                 <span className="ws-label">Status</span>
-                <div className="flex flex-col gap-1" role="radiogroup" aria-label="Status">
+                <div
+                  className="flex flex-wrap gap-1 md:flex-col"
+                  role="radiogroup"
+                  aria-label="Status"
+                  onKeyDown={(e) => radioKeys(e, TASK_STATUSES.filter((s) => s !== "done" || canSignOff), draft.status, (v) => set("status", v))}
+                >
                   {TASK_STATUSES.map((s) => {
                     const locked = s === "done" && !canSignOff;
                     const on = draft.status === s;
@@ -472,9 +583,14 @@ export default function TaskDrawer({
                         type="button"
                         role="radio"
                         aria-checked={on}
+                        tabIndex={on ? 0 : -1}
                         aria-disabled={locked}
                         title={locked ? signOffMessage : undefined}
-                        onClick={() => (locked ? setError(signOffMessage) : set("status", s))}
+                        onClick={() => {
+                          if (!locked) return set("status", s);
+                          setOfferQC(true);
+                          setError(signOffMessage);
+                        }}
                         className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-left text-sm ${on ? "border-ink bg-paper" : "border-line hover:border-ghost"} ${locked ? "opacity-45" : ""}`}
                       >
                         <StatusDot status={s} />
@@ -492,13 +608,14 @@ export default function TaskDrawer({
 
               <div>
                 <span className="ws-label">Priority</span>
-                <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="Priority">
+                <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="Priority" onKeyDown={(e) => radioKeys(e, TASK_PRIORITIES, draft.priority, (v) => set("priority", v))}>
                   {TASK_PRIORITIES.map((p) => (
                     <button
                       key={p}
                       type="button"
                       role="radio"
                       aria-checked={draft.priority === p}
+                      tabIndex={draft.priority === p ? 0 : -1}
                       onClick={() => set("priority", p)}
                       className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-1.5 text-xs ${draft.priority === p ? "border-ink bg-paper" : "border-line hover:border-ghost"}`}
                     >
@@ -510,7 +627,7 @@ export default function TaskDrawer({
               </div>
 
               <div>
-                <label className="ws-label" htmlFor="t-owner">Owner</label>
+                <label className="ws-label" htmlFor="t-owner">Assigned to</label>
                 <select id="t-owner" className="ws-input" value={draft.assignee_id ?? ""} onChange={(e) => set("assignee_id", e.target.value || null)}>
                   <option value="">Nobody yet</option>
                   {people.map((p) => (
@@ -523,22 +640,41 @@ export default function TaskDrawer({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="ws-label" htmlFor="t-start">Starts</label>
-                  <input id="t-start" type="date" className="ws-input" value={draft.start_date ?? ""} max={draft.due_date ?? undefined} onChange={(e) => set("start_date", e.target.value || null)} />
-                </div>
-                <div>
                   <label className="ws-label" htmlFor="t-due">Due</label>
                   <input
                     id="t-due"
                     type="date"
-                    className={`ws-input ${missingDue ? "!border-[#b42318]" : ""}`}
+                    className={`ws-input ${showDueError ? "!border-[#b42318]" : ""}`}
                     value={draft.due_date ?? ""}
                     min={draft.start_date ?? undefined}
                     onChange={(e) => set("due_date", e.target.value || null)}
                   />
                 </div>
+                <div>
+                  <label className="ws-label" htmlFor="t-start">Starts</label>
+                  <input id="t-start" type="date" className="ws-input" value={draft.start_date ?? ""} max={draft.due_date ?? undefined} onChange={(e) => set("start_date", e.target.value || null)} />
+                </div>
+                <div className="col-span-2 -mt-1 flex flex-wrap gap-1" aria-label="Quick due dates">
+                  {DUE_SHORTCUTS.map((d) => {
+                    const v = d.value();
+                    const on = draft.due_date === v;
+                    return (
+                      <button
+                        key={d.label}
+                        type="button"
+                        tabIndex={-1}
+                        className={`ws-chip !px-2.5 !py-0.5 hover:!bg-ghost ${on ? "!bg-ink !text-paper" : ""}`}
+                        title={shortDate(v)}
+                        onClick={() => set("due_date", v)}
+                      >
+                        {d.label}
+                      </button>
+                    );
+                  })}
+                  {draft.due_date && <span className="self-center text-xs text-mute">{shortDate(draft.due_date)}</span>}
+                </div>
                 {datesBackwards && <p className="col-span-2 text-xs text-[#b42318]">The due date is before the start date.</p>}
-                {missingDue && (
+                {showDueError && (
                   <p className="col-span-2 text-xs text-[#b42318]">Every task needs a deadline. Without one it can never be late, so nobody is ever told to chase it.</p>
                 )}
                 {draft.due_date && !draft.start_date && (
@@ -560,14 +696,18 @@ export default function TaskDrawer({
                 />
                 {draft.status === "done" && task?.status !== "done" ? (
                   <p className="text-xs text-mute">Moving this to Done saves it at 100%.</p>
-                ) : willComplete ? (
+                ) : completesToDone ? (
                   <p className="text-xs text-mute">Saving at 100% marks this task Done.</p>
+                ) : completesToQC ? (
+                  <p className="text-xs text-mute">At 100% this goes to Quality Check for {qcFirst} to sign off.</p>
                 ) : draft.progress === 100 && draft.status !== "done" ? (
                   <p className="text-xs text-mute">
                     At 100% but not marked Done —{" "}
-                    <button className="underline" onClick={() => (canSignOff ? set("status", "done") : setError(signOffMessage))}>
-                      mark it Done
-                    </button>
+                    {canSignOff ? (
+                      <button className="underline" onClick={() => set("status", "done")}>mark it Done</button>
+                    ) : (
+                      <button className="underline" onClick={() => set("status", "quality_check")}>send it to {qcFirst} for sign-off</button>
+                    )}
                   </p>
                 ) : null}
               </div>
@@ -635,11 +775,31 @@ export default function TaskDrawer({
           </div>
         )}
 
-        <footer className="flex items-center gap-2 border-t border-line bg-paper px-5 py-3">
+        <footer className="flex flex-wrap items-center gap-2 border-t border-line bg-paper px-5 py-3">
           {task && <TwoTap label="Delete" armedLabel="Tap again to delete" onConfirm={removeTask} />}
-          <span className="flex-1" />
+          <span className="min-w-0 flex-1 text-xs text-mute">
+            {draft && !draft.title.trim() ? (
+              "Give it a title to save."
+            ) : missingDue ? (
+              <>
+                Needs a due date —{" "}
+                <button className="underline" onClick={() => document.getElementById("t-due")?.focus()}>
+                  pick one
+                </button>
+              </>
+            ) : datesBackwards ? (
+              "The due date is before the start date."
+            ) : (
+              <span className="hidden md:inline">Ctrl/⌘ + Enter to save{!task ? " · add Shift to add another" : ""}</span>
+            )}
+          </span>
           <button className="ws-btn" onClick={close}>Cancel</button>
-          <button className="ws-btn ws-btn--primary" disabled={!canSave} onClick={save}>
+          {!task && (
+            <button className="ws-btn" disabled={!canSave} onClick={() => save(true)} title="Ctrl/⌘ + Shift + Enter">
+              Create &amp; add another
+            </button>
+          )}
+          <button className="ws-btn ws-btn--primary" disabled={!canSave} onClick={() => save()}>
             {saving ? "Saving…" : task ? "Save" : "Create task"}
           </button>
         </footer>
