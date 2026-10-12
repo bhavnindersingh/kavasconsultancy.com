@@ -42,8 +42,10 @@ export async function proxy(request: NextRequest) {
 
   let response = NextResponse.rewrite(target, { request });
 
-  // Keep the Supabase session fresh: getUser() rotates an expiring token and
+  // Keep the Supabase session fresh: getClaims() rotates an expiring token and
   // writes the new cookies onto both the forwarded request and the response.
+  // It verifies the JWT locally against the project's (cached) signing keys,
+  // so a valid session costs no round trip to Supabase Auth.
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (url && key) {
@@ -57,7 +59,7 @@ export async function proxy(request: NextRequest) {
         },
       },
     });
-    await supabase.auth.getUser();
+    await supabase.auth.getClaims();
   }
 
   return response;

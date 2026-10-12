@@ -8,7 +8,7 @@ import { headers } from "next/headers";
 // and are templated in supabase/templates/.
 //
 // Sending never throws into the caller: a task edit must not fail because an
-// email did. Without RESEND_API_KEY (local dev, tests) the email is logged.
+// email did. Without RESEND_API_KEY (local dev, tests) one line notes the email instead.
 
 const API_KEY = process.env.RESEND_API_KEY ?? "";
 const FROM = process.env.EMAIL_FROM || "Kavas Workspace <no-reply@kavasconsultancy.com>";
@@ -25,7 +25,7 @@ export type Email = {
 
 export async function sendEmail(email: Email): Promise<boolean> {
   if (!API_KEY) {
-    console.info(`[mail:dev] to=${email.to} subject="${email.subject}"\n${email.text}`);
+    console.info(`[mail:dev] to=${email.to} subject="${email.subject}"`);
     return true;
   }
   try {
