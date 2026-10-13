@@ -28,7 +28,7 @@ export default function SalaryDialog({ people, onClose, onSaved }: { people: Pro
   // Who's paying this month's salaries; starts from whoever paid the last one.
   const [payer, setPayer] = useState("");
   const payers = [
-    ...people.filter((p) => p.role === "partner").map((p) => ({ value: p.id, label: p.full_name || p.email })),
+    ...people.filter((p) => p.is_firm_partner).map((p) => ({ value: p.id, label: p.full_name || p.email })),
     ...OFFERED_PAYER_ENTITIES.map((k) => ({ value: entityKey(k), label: PAYER_ENTITY_LABEL[k] })),
   ];
   // Partners first, then members, each by name.

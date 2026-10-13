@@ -130,8 +130,9 @@ export default function EntryDialog({
   // Who paid: a partner or Kavas Capital. An old payer who's since left (or
   // a firm no longer offered) stays selectable on the entry that names them.
   const payer = str(d.payer);
+  const firmPartners = people.filter((p) => p.is_firm_partner);
   const payerOptions = [
-    ...partners.map((p) => ({ value: p.id, label: p.full_name || p.email })),
+    ...firmPartners.map((p) => ({ value: p.id, label: p.full_name || p.email })),
     ...OFFERED_PAYER_ENTITIES.map((k) => ({ value: entityKey(k), label: PAYER_ENTITY_LABEL[k] })),
   ];
   if (payer && !payerOptions.some((o) => o.value === payer)) payerOptions.push({ value: payer, label: payerLabel(payer, nameOf) });
@@ -333,7 +334,13 @@ export default function EntryDialog({
         <Choice
           label={income ? "Who received it" : "Who paid"}
           value={payer}
-          hint={income ? "Whose account the client paid into" : "Whose money paid for it. What partners pay is evened out in equal shares."}
+          hint={
+            !firmPartners.length
+              ? "Nobody is marked as a partner in the firm yet — do that on the Team page (⋯ → Partner in the firm)."
+              : income
+                ? "Whose account the client paid into"
+                : "Whose money paid for it. Kavas Capital’s counts equally to its partners; it all evens out in equal shares."
+          }
           options={payerOptions}
           onChange={(v) => set("payer", v)}
         />

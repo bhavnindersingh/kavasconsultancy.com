@@ -18,6 +18,10 @@ export type Profile = {
   email_notifications?: boolean;
   /** The morning digest of overdue and due-today work. */
   email_digest?: boolean;
+  /** An equal partner in Kavas Consultancy: may pay for the firm, shares it equally. (Role is about access, not ownership.) */
+  is_firm_partner?: boolean;
+  /** A partner in Kavas Capital: its payments count equally to these people. */
+  in_kavas_capital?: boolean;
 };
 
 // ── Tasks ──────────────────────────────────────────────────────────────────

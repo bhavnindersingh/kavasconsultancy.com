@@ -41,6 +41,18 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const shown = q ? members.filter((m) => `${m.full_name ?? ""} ${m.email}`.toLowerCase().includes(q)) : members;
+  const stake = (m: TeamMember, change: { is_firm_partner?: boolean; in_kavas_capital?: boolean }) =>
+    run(
+      () => updateMember(m.id, change),
+      change.is_firm_partner !== undefined
+        ? change.is_firm_partner
+          ? `${label(m)} is marked as a partner in the firm. They can now be recorded as paying for it.`
+          : `${label(m)} is no longer marked as a partner in the firm.`
+        : change.in_kavas_capital
+          ? `${label(m)} is marked as a Kavas Capital partner.`
+          : `${label(m)} is no longer marked as a Kavas Capital partner.`,
+    );
+  const owners = members.filter((m) => m.is_firm_partner);
   const active = shown.filter((m) => m.is_active);
   const inactive = shown.filter((m) => !m.is_active);
   const everyoneActive = members.filter((m) => m.is_active);
@@ -88,6 +100,12 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
       )}
       {notice && <p className="mb-4 rounded-lg bg-[#ecfdf3] text-[#067647] px-3 py-2 text-sm" role="status">{notice}</p>}
 
+      {owners.length === 0 && (
+        <p className="mb-4 rounded-lg bg-[#fffaeb] px-3 py-2 text-sm text-[#b54708]">
+          Nobody is marked as a partner in the firm yet, so Accounts can’t record who paid. Use ⋯ → “Partner in the firm” on each equal
+          partner, and “Kavas Capital partner” on its partners.
+        </p>
+      )}
       {q && !shown.length && <p className="mb-4 text-sm text-mute">Nobody matches “{query.trim()}”.</p>}
 
       {active.length > 0 && (
@@ -100,6 +118,7 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
           onPassword={setPasswordFor}
           onEmail={emailAccess}
           onRole={(m, role) => run(() => updateMember(m.id, { role }), `${label(m)} is now a ${role}.`)}
+          onStake={stake}
           onActive={(m, is_active) => run(() => updateMember(m.id, { is_active }), `${label(m)} has been deactivated.`)}
         />
       )}
@@ -119,6 +138,7 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
             onPassword={setPasswordFor}
             onEmail={emailAccess}
             onRole={(m, role) => run(() => updateMember(m.id, { role }))}
+            onStake={stake}
             onActive={(m, is_active) => run(() => updateMember(m.id, { is_active }), `${label(m)} can sign in again.`)}
           />
         </>
@@ -190,6 +210,7 @@ function MemberTable({
   onEmail,
   onRole,
   onActive,
+  onStake,
 }: {
   members: TeamMember[];
   meId: string;
@@ -200,6 +221,7 @@ function MemberTable({
   onEmail: (m: TeamMember) => void;
   onRole: (m: TeamMember, role: Role) => void;
   onActive: (m: TeamMember, active: boolean) => void;
+  onStake: (m: TeamMember, change: { is_firm_partner?: boolean; in_kavas_capital?: boolean }) => void;
 }) {
   return (
     <ul className="rounded-2xl border border-line bg-card divide-y divide-line">
@@ -215,6 +237,12 @@ function MemberTable({
                 {you && <span className="font-normal text-mute text-sm"> (you)</span>}
               </div>
               <div className="truncate text-xs text-mute" title={m.email}>{m.email}</div>
+              {(m.is_firm_partner || m.in_kavas_capital) && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {m.is_firm_partner && <span className="ws-chip bg-ink text-paper text-[11px]">Partner in the firm</span>}
+                  {m.in_kavas_capital && <span className="ws-chip bg-cream text-[11px]">Kavas Capital</span>}
+                </div>
+              )}
             </div>
             {m.is_active && (
               <span className={`ws-chip text-xs ${TONE[seen.tone]}`} title={seen.title}>
@@ -246,6 +274,14 @@ function MemberTable({
                     ? [{ label: "Email a sign-in link", run: () => onEmail(m), disabled: !adminReady }]
                     : []),
                   { label: "Set a password", run: () => onPassword(m), disabled: !adminReady },
+                  {
+                    label: m.is_firm_partner ? "✓ Partner in the firm" : "Partner in the firm",
+                    run: () => onStake(m, { is_firm_partner: !m.is_firm_partner }),
+                  },
+                  {
+                    label: m.in_kavas_capital ? "✓ Kavas Capital partner" : "Kavas Capital partner",
+                    run: () => onStake(m, { in_kavas_capital: !m.in_kavas_capital }),
+                  },
                 ]}
                 disabled={pending}
               />

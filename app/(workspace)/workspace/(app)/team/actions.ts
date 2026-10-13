@@ -73,13 +73,17 @@ export async function addMember(input: { email: string; fullName: string; role: 
 
 export async function updateMember(
   userId: string,
-  change: { full_name?: string; role?: Role; is_active?: boolean },
+  change: { full_name?: string; role?: Role; is_active?: boolean; is_firm_partner?: boolean; in_kavas_capital?: boolean },
 ): Promise<ActionResult> {
   const me = await asPartner();
   if (!me) return fail("Only a partner can change the team");
   if (!UUID.test(userId)) return fail("Unknown person");
 
-  const fields: { full_name?: string; role?: Role; is_active?: boolean } = {};
+  const fields: { full_name?: string; role?: Role; is_active?: boolean; is_firm_partner?: boolean; in_kavas_capital?: boolean } = {};
+  // Ownership flags: the database lets only a firm partner change them (or
+  // anyone with the partner role while none is set yet).
+  if (change.is_firm_partner !== undefined) fields.is_firm_partner = Boolean(change.is_firm_partner);
+  if (change.in_kavas_capital !== undefined) fields.in_kavas_capital = Boolean(change.in_kavas_capital);
   if (change.full_name !== undefined) {
     const name = String(change.full_name).trim();
     if (!name) return fail("Enter a name");

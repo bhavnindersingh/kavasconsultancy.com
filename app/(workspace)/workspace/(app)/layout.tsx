@@ -17,7 +17,7 @@ export default async function WorkspaceAppLayout({ children }: { children: React
   // people for new assignments). Signed out, RLS returns no people.
   const [me, { data: people }] = await Promise.all([
     currentProfile(),
-    supabase.from("profiles").select("id, email, full_name, role, is_active").order("full_name"),
+    supabase.from("profiles").select("id, email, full_name, role, is_active, is_firm_partner, in_kavas_capital").order("full_name"),
   ]);
   if (!me) redirect("/login");
 

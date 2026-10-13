@@ -13,7 +13,7 @@ export default async function TeamPage() {
   const supabase = await supabaseServer();
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, email, full_name, role, is_active, created_at")
+    .select("id, email, full_name, role, is_active, created_at, is_firm_partner, in_kavas_capital")
     .order("is_active", { ascending: false })
     .order("full_name");
 

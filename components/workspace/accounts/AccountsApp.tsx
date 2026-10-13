@@ -26,6 +26,9 @@ export default function AccountsApp() {
   const { people, nameOf } = useWorkspace();
   const supabase = supabaseBrowser();
   const partners = useMemo(() => people.filter((p) => p.role === "partner"), [people]);
+  // Ownership, not access: the equal partners who may pay, and Kavas Capital's.
+  const firmPartners = useMemo(() => people.filter((p) => p.is_firm_partner), [people]);
+  const capitalPartners = useMemo(() => people.filter((p) => p.in_kavas_capital), [people]);
 
   const [period, setPeriod] = useState<Period>("this_month");
   const [from, setFrom] = useState(() => periodRange("this_month").from);
@@ -263,7 +266,7 @@ export default function AccountsApp() {
         </select>
         <select className="ws-input !w-auto" value={payer} onChange={(e) => setPayer(e.target.value)} aria-label="Paid by">
           <option value="">Paid by anyone</option>
-          {partners.map((p) => <option key={p.id} value={p.id}>Paid by {p.full_name || p.email}</option>)}
+          {firmPartners.map((p) => <option key={p.id} value={p.id}>Paid by {p.full_name || p.email}</option>)}
           {OFFERED_PAYER_ENTITIES.map((k) => <option key={k} value={entityKey(k)}>Paid by {payerLabel(entityKey(k), nameOf)}</option>)}
           <option value={NO_PAYER}>Payer not recorded</option>
         </select>
@@ -310,7 +313,7 @@ export default function AccountsApp() {
         </div>
       </div>
 
-      <WhoPaid entries={entries} partners={partners} nameOf={nameOf} onPick={setPayer} />
+      <WhoPaid entries={entries} partners={firmPartners} capitalPartners={capitalPartners} nameOf={nameOf} onPick={setPayer} />
 
       {/* Spending by category */}
       {cardHeads.length === 0 && !loading && <p className="mb-4 px-1 text-sm text-mute">No spending in this period yet.</p>}
@@ -543,24 +546,37 @@ function Signed({ v, cur }: { v: number; cur: Currency }) {
 }
 
 /**
- * Who has put in what over the period, and the equal-shares settlement
- * between the partners. A partner's contribution is what they paid out less
- * what clients paid into their account; the partners' contributions are
- * evened out in thirds (or however many partners there are). Kavas Capital's
- * spending is shown on its own: the firm owes it back, so it isn't anyone's
- * share.
+ * Who has put in what over the period, and the equal-shares settlement.
+ *
+ * A partner's contribution is what they paid out, less what clients paid
+ * into their account. Kavas Capital is its partners' own firm, so what it
+ * pays (or receives) counts equally to each of them. The contributions are
+ * then evened out in equal shares across the firm's partners: above your
+ * share, you're owed; below it, you owe.
  */
 function WhoPaid({
   entries,
   partners,
+  capitalPartners,
   nameOf,
   onPick,
 }: {
   entries: AccountEntry[];
   partners: { id: string; full_name: string | null; email: string }[];
+  capitalPartners: { id: string }[];
   nameOf: (id: string | null) => string;
   onPick: (payer: string) => void;
 }) {
+  if (!entries.length) return null;
+  if (!partners.length)
+    return (
+      <p className="mb-6 rounded-lg bg-[#fffaeb] px-3 py-2 text-sm text-[#b54708]">
+        Mark the firm’s equal partners on the Team page (⋯ → Partner in the firm) to see who has paid what.
+      </p>
+    );
+
+  const capitalKey = entityKey("kavas_capital");
+  const capitalName = payerLabel(capitalKey, nameOf);
   const curs = (["INR", "USD"] as Currency[]).filter((cur) => cur === "INR" || entries.some((e) => e.currency === cur));
   const flowFor = (key: string, cur: Currency) => {
     const of = entries.filter((e) => e.currency === cur && payerKey(e) === key);
@@ -569,47 +585,67 @@ function WhoPaid({
     return { out, inn, put: out - inn };
   };
   const unrecorded = entries.filter((e) => !payerKey(e)).length;
-  if (!partners.length || !entries.length) return null;
+  // Kavas Capital's money is split among its partners who are also partners here.
+  const capitalSplit = partners.filter((p) => capitalPartners.some((c) => c.id === p.id));
 
   const rows = curs.map((cur) => {
-    const each = partners.map((p) => ({ p, ...flowFor(p.id, cur) }));
-    const share = each.reduce((a, x) => a + x.put, 0) / partners.length;
-    return { cur, each: each.map((x) => ({ ...x, balance: x.put - share })), share, capital: flowFor(entityKey("kavas_capital"), cur) };
+    const capital = flowFor(capitalKey, cur);
+    const viaCapital = capitalSplit.length ? capital.put / capitalSplit.length : 0;
+    const each = partners.map((p) => {
+      const own = flowFor(p.id, cur);
+      const fromCapital = capitalSplit.some((c) => c.id === p.id) ? viaCapital : 0;
+      return { p, ...own, fromCapital, put: own.put + fromCapital };
+    });
+    // Unsplit Kavas Capital money (no partner marked) still counts toward the total.
+    const total = each.reduce((a, x) => a + x.put, 0) + (capitalSplit.length ? 0 : capital.put);
+    const share = total / partners.length;
+    return { cur, capital, share, each: each.map((x) => ({ ...x, balance: x.put - share })) };
   });
 
   return (
     <section className="mb-6 rounded-2xl border border-line bg-card p-4">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-medium">Who’s paid what</h2>
-        <p className="text-xs text-mute">Equal partners: what each of you puts in is evened out in {partners.length === 3 ? "thirds" : "equal shares"}.</p>
+        <p className="text-xs text-mute">
+          {partners.length} equal partners · each one’s share is {partners.length === 3 ? "a third" : `1/${partners.length}`}
+          {capitalSplit.length > 0 && ` · ${capitalName} counts to ${capitalSplit.map((p) => (p.full_name || p.email).split(" ")[0]).join(" and ")} equally`}
+        </p>
       </div>
-      {rows.map(({ cur, each, share, capital }) => (
+      {rows.map(({ cur, capital, share, each }) => (
         <div key={cur} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 [&+&]:mt-4">
           {curs.length > 1 && <p className="col-span-full text-xs font-medium text-mute">In {cur}</p>}
-          {each.map(({ p, out, inn, balance }) => {
+          {each.map(({ p, out, inn, fromCapital, balance }) => {
             const settled = Math.abs(balance) < 1;
             return (
               <button key={p.id} onClick={() => onPick(p.id)} className="rounded-xl border border-line p-3 text-left hover:border-ghost">
                 <span className="block font-medium">{p.full_name || p.email}</span>
                 <span className="block text-sm tabular-nums">Paid {money(out, cur)}</span>
                 {inn > 0 && <span className="block text-sm tabular-nums text-[#067647]">Received {money(inn, cur)}</span>}
+                {fromCapital !== 0 && (
+                  <span className="block text-xs text-mute tabular-nums">
+                    {fromCapital > 0 ? "+" : "−"}
+                    {money(Math.abs(fromCapital), cur)} via {capitalName}
+                  </span>
+                )}
                 <span className={`mt-1 block text-sm font-medium tabular-nums ${settled ? "text-mute" : balance > 0 ? "text-[#067647]" : "text-[#b42318]"}`}>
                   {settled ? "Even" : balance > 0 ? `Is owed ${money(balance, cur)}` : `Owes ${money(-balance, cur)}`}
                 </span>
               </button>
             );
           })}
-          <button onClick={() => onPick(entityKey("kavas_capital"))} className="rounded-xl border border-line bg-paper p-3 text-left hover:border-ghost">
-            <span className="block font-medium">{payerLabel(entityKey("kavas_capital"), nameOf)}</span>
+          <button onClick={() => onPick(capitalKey)} className="rounded-xl border border-line bg-paper p-3 text-left hover:border-ghost">
+            <span className="block font-medium">{capitalName}</span>
             <span className="block text-sm tabular-nums">Paid {money(capital.out, cur)}</span>
             {capital.inn > 0 && <span className="block text-sm tabular-nums text-[#067647]">Received {money(capital.inn, cur)}</span>}
-            <span className="mt-1 block text-sm text-mute">
-              {capital.put > 0 ? `The firm owes it ${money(capital.put, cur)}` : capital.put < 0 ? `It holds ${money(-capital.put, cur)} of the firm’s` : "Nothing between them"}
+            <span className="mt-1 block text-xs text-mute">
+              {capitalSplit.length
+                ? `Counted to ${capitalSplit.map((p) => (p.full_name || p.email).split(" ")[0]).join(" and ")}, equally`
+                : "Mark its partners on the Team page to count this to them"}
             </span>
           </button>
           {share !== 0 && (
             <p className="col-span-full text-xs text-mute">
-              Each partner’s share of what the partners put in: {money(share, cur)}.
+              Each partner’s share of the {share > 0 ? "net spending" : "net income"}: {money(Math.abs(share), cur)}.
             </p>
           )}
         </div>
