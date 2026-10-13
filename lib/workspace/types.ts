@@ -111,14 +111,15 @@ export type CompanyDocument = StoredFile & { folder_id: string; description: str
 
 // ── Accounts ───────────────────────────────────────────────────────────────
 
-export const ACCOUNT_CATEGORIES = ["salary", "purchase", "personal", "company"] as const;
+export const ACCOUNT_CATEGORIES = ["salary", "purchase", "marketing", "company", "personal"] as const;
 export type AccountCategory = (typeof ACCOUNT_CATEGORIES)[number];
 
 export const CATEGORY_LABEL: Record<AccountCategory, string> = {
   salary: "Salaries",
   purchase: "Purchases",
-  personal: "Personal",
+  marketing: "Marketing",
   company: "Company",
+  personal: "Personal",
 };
 
 /** A salary or a personal expense is always one person's. */

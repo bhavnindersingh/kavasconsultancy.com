@@ -236,7 +236,7 @@ export default function AccountsApp() {
       </div>
 
       {/* Summary */}
-      <div className={`grid grid-cols-2 gap-3 mb-4 ${categories.length > 3 ? "lg:grid-cols-4" : "sm:grid-cols-3"}`}>
+      <div className={`grid grid-cols-2 gap-3 mb-4 ${categories.length > 4 ? "sm:grid-cols-3 lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         {categories.map((c) => {
           const inr = totals.get(`${c}|INR`) ?? 0;
           const usd = totals.get(`${c}|USD`) ?? 0;
