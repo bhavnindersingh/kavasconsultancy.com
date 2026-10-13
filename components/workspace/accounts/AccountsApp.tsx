@@ -14,11 +14,29 @@ import {
 } from "@/lib/workspace/types";
 import { useWorkspace } from "../WorkspaceContext";
 import { formatDate, today } from "../tasks/bits";
+import BooksView, { type BooksTab } from "./BooksView";
 import EntryDialog from "./EntryDialog";
 import SalaryDialog from "./SalaryDialog";
 import { entityKey, money, monthKey, monthLabel, payerKey, payerLabel, periodRange, type Period } from "./ledger";
 
 const TREND_MONTHS = 6;
+
+const VIEWS: { key: "entries" | BooksTab; label: string }[] = [
+  { key: "entries", label: "Entries" },
+  { key: "pnl", label: "Profit & loss" },
+  { key: "balance", label: "Balance sheet" },
+  { key: "trial", label: "Trial balance" },
+  { key: "ledgers", label: "Ledgers" },
+];
+
+const PERIOD_LABEL: Partial<Record<Period, string>> = {
+  this_month: "This month",
+  last_month: "Last month",
+  this_fy: "This financial year",
+  last_fy: "Last financial year",
+  all: "All time",
+  custom: "Custom dates",
+};
 /** Payer filter value for entries that don't say who paid. */
 const NO_PAYER = "none";
 
@@ -46,6 +64,7 @@ export default function AccountsApp() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<AccountEntry | "new" | null>(null);
   const [paying, setPaying] = useState(false);
+  const [view, setView] = useState<"entries" | BooksTab>("entries");
   const [sort, setSort] = useState<{ key: "date" | "amount"; dir: 1 | -1 }>({ key: "date", dir: -1 });
 
   function choosePeriod(p: Period) {
@@ -125,9 +144,9 @@ export default function AccountsApp() {
     const out = list.filter((e) => !isIncome(e.category));
     return (
       <>
-        {inn.length > 0 && <span className="text-[#067647]">+{sumOf(inn)} in</span>}
-        {inn.length > 0 && out.length > 0 && <span className="text-mute"> · </span>}
-        {out.length > 0 && <span>{sumOf(out)} out</span>}
+          {inn.length > 0 && <span className="text-[#067647]">+{sumOf(inn)} in</span>}
+          {inn.length > 0 && out.length > 0 && <span className="text-mute"> · </span>}
+          {out.length > 0 && <span>{sumOf(out)} out</span>}
       </>
     );
   };
@@ -244,6 +263,20 @@ export default function AccountsApp() {
         </p>
       )}
 
+      <div className="-mx-4 mb-5 flex gap-1 overflow-x-auto px-4 md:mx-0 md:px-0" role="tablist" aria-label="Accounts view">
+        {VIEWS.map((v) => (
+          <button
+            key={v.key}
+            role="tab"
+            aria-selected={view === v.key}
+            onClick={() => setView(v.key)}
+            className={`flex-none rounded-full px-4 py-1.5 text-sm ${view === v.key ? "bg-ink text-paper" : "border border-line bg-card hover:border-ghost"}`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-2 mb-5">
         <select className="ws-input !w-auto" value={period} onChange={(e) => choosePeriod(e.target.value as Period)} aria-label="Period">
@@ -260,31 +293,40 @@ export default function AccountsApp() {
             <input type="date" className="ws-input !w-auto" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To" />
           </>
         )}
-        <select className="ws-input !w-auto" value={category} onChange={(e) => setCategory(e.target.value as AccountCategory | "")} aria-label="Category">
-          <option value="">All categories</option>
-          {categories.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
-        </select>
-        <select className="ws-input !w-auto" value={payer} onChange={(e) => setPayer(e.target.value)} aria-label="Paid by">
-          <option value="">Paid by anyone</option>
-          {firmPartners.map((p) => <option key={p.id} value={p.id}>Paid by {p.full_name || p.email}</option>)}
-          {OFFERED_PAYER_ENTITIES.map((k) => <option key={k} value={entityKey(k)}>Paid by {payerLabel(entityKey(k), nameOf)}</option>)}
-          <option value={NO_PAYER}>Payer not recorded</option>
-        </select>
-        <select className="ws-input !w-auto" value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Salaries of">
-          <option value="">Anyone’s pay</option>
-          {/* Only a salary names a person, so this narrows to their salaries. */}
-          {people.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.email}’s pay</option>)}
-        </select>
-        <input className="ws-input !w-auto min-w-56 flex-1 max-w-sm" type="search" aria-label="Search entries" placeholder="Search party, reference, invoice…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <label className="flex items-center gap-2 text-sm px-2 py-2">
-          <input type="checkbox" checked={gstOnly} onChange={(e) => setGstOnly(e.target.checked)} /> GST only
-        </label>
-        {filtered && (
-          <button className="text-sm text-mute underline underline-offset-2 px-1 py-2 hover:text-ink" onClick={clearFilters}>
-            Clear filters
-          </button>
+        {view === "entries" && (
+          <>
+          <select className="ws-input !w-auto" value={category} onChange={(e) => setCategory(e.target.value as AccountCategory | "")} aria-label="Category">
+            <option value="">All categories</option>
+            {categories.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+          </select>
+          <select className="ws-input !w-auto" value={payer} onChange={(e) => setPayer(e.target.value)} aria-label="Paid by">
+            <option value="">Paid by anyone</option>
+            {firmPartners.map((p) => <option key={p.id} value={p.id}>Paid by {p.full_name || p.email}</option>)}
+            {OFFERED_PAYER_ENTITIES.map((k) => <option key={k} value={entityKey(k)}>Paid by {payerLabel(entityKey(k), nameOf)}</option>)}
+            <option value={NO_PAYER}>Payer not recorded</option>
+          </select>
+          <select className="ws-input !w-auto" value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Salaries of">
+            <option value="">Anyone’s pay</option>
+            {/* Only a salary names a person, so this narrows to their salaries. */}
+            {people.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.email}’s pay</option>)}
+          </select>
+          <input className="ws-input !w-auto min-w-56 flex-1 max-w-sm" type="search" aria-label="Search entries" placeholder="Search party, reference, invoice…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <label className="flex items-center gap-2 text-sm px-2 py-2">
+            <input type="checkbox" checked={gstOnly} onChange={(e) => setGstOnly(e.target.checked)} /> GST only
+          </label>
+          {filtered && (
+            <button className="text-sm text-mute underline underline-offset-2 px-1 py-2 hover:text-ink" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+          </>
         )}
       </div>
+
+      {view !== "entries" ? (
+        <BooksView tab={view} from={from} to={to} periodLabel={period === "custom" ? `${from ? formatDate(from) : "Start"} – ${to ? formatDate(to) : "today"}` : (PERIOD_LABEL[period] ?? "")} />
+      ) : (
+      <>
 
       {/* In, out, net */}
       <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -506,6 +548,9 @@ export default function AccountsApp() {
         </table>
       </div>
 
+      </>
+      )}
+
       {editing && (
         <EntryDialog
           entry={editing === "new" ? null : editing}
@@ -571,7 +616,7 @@ function WhoPaid({
   if (!partners.length)
     return (
       <p className="mb-6 rounded-lg bg-[#fffaeb] px-3 py-2 text-sm text-[#b54708]">
-        Mark the firm’s equal partners on the Team page (⋯ → Partner in the firm) to see who has paid what.
+        The app doesn’t know who owns the firm yet — set it on the Team page (⋯ → Partner in the firm) to see who has paid what.
       </p>
     );
 

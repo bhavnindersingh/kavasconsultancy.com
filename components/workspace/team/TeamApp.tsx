@@ -102,8 +102,8 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
 
       {owners.length === 0 && (
         <p className="mb-4 rounded-lg bg-[#fffaeb] px-3 py-2 text-sm text-[#b54708]">
-          Nobody is marked as a partner in the firm yet, so Accounts can’t record who paid. Use ⋯ → “Partner in the firm” on each equal
-          partner, and “Kavas Capital partner” on its partners.
+          The app doesn’t know who owns the firm yet. On each owner, open ⋯ and tick “Partner in the firm”; on Kavas Capital’s owners, also tick
+          “Kavas Capital partner”. Accounts uses this to know who can pay bills.
         </p>
       )}
       {q && !shown.length && <p className="mb-4 text-sm text-mute">Nobody matches “{query.trim()}”.</p>}
