@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { errorText, formatBytes, objectKey, openObject, removeObjects, uploadObject } from "@/lib/workspace/files";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
 import {
+  CATEGORY_HINT,
   CATEGORY_LABEL,
   CURRENCIES,
   ENTRY_CATEGORIES,
@@ -55,7 +56,7 @@ function remember(d: Draft) {
 function toDraft(e: AccountEntry | null, defaults?: Partial<Draft>): Draft {
   return {
     entry_date: e?.entry_date ?? today(),
-    category: e?.category ?? "company",
+    category: e?.category ?? "office",
     owner_id: e?.owner_id ?? "",
     salary_month: e?.salary_month?.slice(0, 7) ?? "",
     party: str(e?.party),
@@ -282,6 +283,7 @@ export default function EntryDialog({
         <Choice
           label="Category"
           value={category}
+          hint={CATEGORY_HINT[category]}
           options={[...ENTRY_CATEGORIES, ...(entry && !ENTRY_CATEGORIES.includes(entry.category) ? [entry.category] : [])].map((c) => ({ value: c, label: isIncome(c) ? `${CATEGORY_LABEL[c]} · money in` : CATEGORY_LABEL[c] }))}
           onChange={(v) =>
             setD((cur) => {
@@ -428,7 +430,20 @@ export default function EntryDialog({
 }
 
 /** A row of tap-to-pick buttons: quicker than a dropdown for a handful of options. */
-function Choice({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
+function Choice({
+  label,
+  value,
+  options,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+  /** A line under the buttons about the current choice. */
+  hint?: string;
+}) {
   return (
     <div role="radiogroup" aria-label={label}>
       <span className="ws-label">{label}</span>
@@ -449,6 +464,7 @@ function Choice({ label, value, options, onChange }: { label: string; value: str
           );
         })}
       </div>
+      {hint && <p className="mt-1.5 text-xs text-mute">{hint}</p>}
     </div>
   );
 }

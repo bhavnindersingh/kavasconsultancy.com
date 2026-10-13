@@ -152,6 +152,10 @@ export default function AccountsApp() {
     [entries, trend],
   );
   const spendCategories = categories.filter((c) => !isIncome(c));
+  // With ten heads, cards and trend columns show only the ones with money in
+  // them (a selected head always shows, so its card can be clicked off).
+  const cardHeads = spendCategories.filter((c) => c === category || inPeriod.some((e) => e.category === c));
+  const trendHeads = spendCategories.filter((c) => trend.some((e) => e.category === c));
 
   // In, out and the difference for the period, per currency.
   const flow = (["INR", "USD"] as Currency[])
@@ -169,7 +173,7 @@ export default function AccountsApp() {
       const ofMonth = trend.filter((e) => e.entry_date.startsWith(m) && (!owner || e.owner_id === owner));
       return {
         month: m,
-        cells: spendCategories.map((c) => {
+        cells: trendHeads.map((c) => {
           const inr = ofMonth.filter((e) => e.category === c && e.currency === "INR").reduce((a, e) => a + Number(e.amount), 0);
           const usd = ofMonth.filter((e) => e.category === c && e.currency === "USD").reduce((a, e) => a + Number(e.amount), 0);
           return { inr, usd };
@@ -179,7 +183,7 @@ export default function AccountsApp() {
         ),
       };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- spendCategories derives from categories
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- trendHeads derives from trend and categories
   }, [trend, owner, categories]);
 
   function exportCsv() {
@@ -213,7 +217,7 @@ export default function AccountsApp() {
       <header className="flex flex-wrap items-end justify-between gap-3 mb-6">
         <div>
           <h1 className="font-serif text-3xl">Accounts</h1>
-          <p className="text-sm text-mute mt-1">Kavas Consultancy’s money in from clients, and money out on salaries and running costs.</p>
+          <p className="text-sm text-mute mt-1">Kavas Consultancy’s money in from clients, and money out by head.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="ws-btn" onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
@@ -292,8 +296,9 @@ export default function AccountsApp() {
       </div>
 
       {/* Spending by category */}
-      <div className={`grid grid-cols-2 gap-3 mb-4 ${spendCategories.length > 5 ? "sm:grid-cols-3 lg:grid-cols-6" : spendCategories.length > 4 ? "sm:grid-cols-3 lg:grid-cols-5" : "lg:grid-cols-4"}`}>
-        {spendCategories.map((c) => {
+      {cardHeads.length === 0 && !loading && <p className="mb-4 px-1 text-sm text-mute">No spending in this period yet.</p>}
+      <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-3 lg:grid-cols-5">
+        {cardHeads.map((c) => {
           const inr = totals.get(`${c}|INR`) ?? 0;
           const usd = totals.get(`${c}|USD`) ?? 0;
           return (
@@ -412,7 +417,7 @@ export default function AccountsApp() {
           <thead className="text-left text-mute">
             <tr className="border-b border-line">
               <th className="font-normal px-4 py-2.5">Month</th>
-              {spendCategories.map((c) => <th key={c} className="font-normal px-4 py-2.5 text-right">{CATEGORY_LABEL[c]}</th>)}
+              {trendHeads.map((c) => <th key={c} className="font-normal px-4 py-2.5 text-right">{CATEGORY_LABEL[c]}</th>)}
               <th className="font-normal px-4 py-2.5 text-right">Spent</th>
               <th className="font-normal px-4 py-2.5 text-right">Invoiced</th>
               <th className="font-normal px-4 py-2.5 text-right">Net</th>

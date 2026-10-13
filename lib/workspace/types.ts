@@ -111,17 +111,50 @@ export type CompanyDocument = StoredFile & { folder_id: string; description: str
 
 // ── Accounts ───────────────────────────────────────────────────────────────
 
-export const ACCOUNT_CATEGORIES = ["invoice", "salary", "purchase", "marketing", "subscription", "company", "personal"] as const;
+// Major heads, in the order the form offers them. "company" is the catch-all,
+// shown as Other; "personal" is retired (see RETIRED_CATEGORIES).
+export const ACCOUNT_CATEGORIES = [
+  "invoice",
+  "salary",
+  "office",
+  "subscription",
+  "marketing",
+  "travel",
+  "professional",
+  "purchase",
+  "tax_bank",
+  "company",
+  "personal",
+] as const;
 export type AccountCategory = (typeof ACCOUNT_CATEGORIES)[number];
 
 export const CATEGORY_LABEL: Record<AccountCategory, string> = {
   invoice: "Invoicing",
   salary: "Salaries",
-  purchase: "Purchases",
+  office: "Office & utilities",
+  subscription: "Software & subscriptions",
   marketing: "Marketing",
-  subscription: "Subscriptions",
-  company: "Company",
+  travel: "Travel",
+  professional: "Professional fees",
+  purchase: "Equipment & purchases",
+  tax_bank: "Taxes & bank charges",
+  company: "Other",
   personal: "Personal",
+};
+
+/** What belongs under each head, shown when picking one. */
+export const CATEGORY_HINT: Record<AccountCategory, string> = {
+  invoice: "Payments from clients for invoices Kavas raised",
+  salary: "Pay for anyone on the team",
+  office: "Rent, co-working, electricity, internet, phone bills",
+  subscription: "Google Workspace, Figma, Adobe, hosting, domains — anything billed on a schedule",
+  marketing: "Ads, events, sponsorships, printed collateral",
+  travel: "Flights, trains, cabs, hotels, meals with clients",
+  professional: "CA and accounting, legal, ROC and GST filings, outside consultants",
+  purchase: "Laptops, phones, furniture — things bought once and kept",
+  tax_bank: "GST and TDS paid, bank and payment-gateway charges, penalties",
+  company: "Anything that doesn’t fit a head above",
+  personal: "A partner’s personal spending (no longer used)",
 };
 
 /** A salary or a personal expense is always one person's. */
