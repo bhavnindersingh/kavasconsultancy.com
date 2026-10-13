@@ -5,6 +5,7 @@ import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
 import {
   ACCOUNT_CATEGORIES,
   CATEGORY_LABEL,
+  RETIRED_CATEGORIES,
   type AccountCategory,
   type AccountEntry,
   type Currency,
@@ -13,7 +14,7 @@ import { useWorkspace } from "../WorkspaceContext";
 import { formatDate, today } from "../tasks/bits";
 import EntryDialog from "./EntryDialog";
 import SalaryDialog from "./SalaryDialog";
-import { JOINT, money, monthKey, monthLabel, periodRange, type Period } from "./ledger";
+import { money, monthKey, monthLabel, periodRange, type Period } from "./ledger";
 
 const TREND_MONTHS = 6;
 
@@ -82,7 +83,7 @@ export default function AccountsApp() {
 
   const rows = useMemo(() => {
     const kept = inPeriod.filter(
-      (e) => (!category || e.category === category) && (!owner || (owner === JOINT ? !e.owner_id : e.owner_id === owner)),
+      (e) => (!category || e.category === category) && (!owner || e.owner_id === owner),
     );
     // The query returns newest first; only re-sort when asked to.
     if (sort.key === "date") return sort.dir === -1 ? kept : [...kept].reverse();
@@ -122,37 +123,39 @@ export default function AccountsApp() {
     return out;
   }, [inPeriod]);
 
-  const perPerson = useMemo(
+  // Salaries paid in the period, per person.
+  const salaries = useMemo(
     () =>
-      people.map((p) => {
-        const mine = inPeriod.filter((e) => e.owner_id === p.id);
-        const sum = (c: AccountCategory) =>
-          (["INR", "USD"] as Currency[])
-            .map((cur) => ({ cur, v: mine.filter((e) => e.category === c && e.currency === cur).reduce((a, e) => a + Number(e.amount), 0) }))
-            .filter((x) => x.v > 0);
-        return { p, salary: sum("salary"), personal: sum("personal") };
-      }),
+      people
+        .map((p) => ({ p, list: inPeriod.filter((e) => e.category === "salary" && e.owner_id === p.id) }))
+        .filter((x) => x.list.length),
     [people, inPeriod],
+  );
+
+  // Retired categories ("Personal") show only where old entries use them.
+  const categories = useMemo(
+    () => ACCOUNT_CATEGORIES.filter((c) => !RETIRED_CATEGORIES.includes(c) || entries.some((e) => e.category === c) || trend.some((e) => e.category === c)),
+    [entries, trend],
   );
 
   const trendRows = useMemo(() => {
     const months = Array.from({ length: TREND_MONTHS }, (_, i) => monthKey(today(), i - (TREND_MONTHS - 1)));
     return months.map((m) => {
-      const ofMonth = trend.filter((e) => e.entry_date.startsWith(m) && (!owner || (owner === JOINT ? !e.owner_id : e.owner_id === owner)));
+      const ofMonth = trend.filter((e) => e.entry_date.startsWith(m) && (!owner || e.owner_id === owner));
       return {
         month: m,
-        cells: ACCOUNT_CATEGORIES.map((c) => {
+        cells: categories.map((c) => {
           const inr = ofMonth.filter((e) => e.category === c && e.currency === "INR").reduce((a, e) => a + Number(e.amount), 0);
           const usd = ofMonth.filter((e) => e.category === c && e.currency === "USD").reduce((a, e) => a + Number(e.amount), 0);
           return { inr, usd };
         }),
       };
     });
-  }, [trend, owner]);
+  }, [trend, owner, categories]);
 
   function exportCsv() {
     const head = [
-      "Date", "Category", "Owner", "Salary month", "Party", "Description", "Amount", "Currency", "Payment method",
+      "Date", "Category", "Paid to (person)", "Salary month", "Party", "Description", "Amount", "Currency", "Payment method",
       "Paid from", "Reference", "Payee account", "Bank narration", "GST", "Vendor GSTIN", "Invoice no", "Invoice date",
       "GST rate", "Taxable value", "GST amount", "Notes", "Receipts",
     ];
@@ -162,7 +165,7 @@ export default function AccountsApp() {
     };
     const lines = rows.map((e) =>
       [
-        e.entry_date, CATEGORY_LABEL[e.category], e.owner_id ? nameOf(e.owner_id) : "Joint", e.salary_month?.slice(0, 7), e.party,
+        e.entry_date, CATEGORY_LABEL[e.category], e.owner_id ? nameOf(e.owner_id) : "Kavas Consultancy", e.salary_month?.slice(0, 7), e.party,
         e.description, e.amount, e.currency, e.payment_method, e.paid_from, e.reference_no, e.payee_account, e.bank_narration,
         e.gst_applicable ? "Yes" : "No", e.vendor_gstin, e.invoice_no, e.invoice_date, e.gst_rate, e.taxable_value, e.gst_amount,
         e.notes, e.account_files?.length ?? 0,
@@ -181,7 +184,7 @@ export default function AccountsApp() {
       <header className="flex flex-wrap items-end justify-between gap-3 mb-6">
         <div>
           <h1 className="font-serif text-3xl">Accounts</h1>
-          <p className="text-sm text-mute mt-1">Salaries, purchases, personal and company spending.</p>
+          <p className="text-sm text-mute mt-1">Kavas Consultancy’s salaries, purchases and running costs.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="ws-btn" onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
@@ -214,13 +217,12 @@ export default function AccountsApp() {
         )}
         <select className="ws-input !w-auto" value={category} onChange={(e) => setCategory(e.target.value as AccountCategory | "")} aria-label="Category">
           <option value="">All categories</option>
-          {ACCOUNT_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
+          {categories.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
         </select>
-        <select className="ws-input !w-auto" value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Owner">
-          <option value="">Everyone</option>
-          <option value={JOINT}>Joint</option>
-          {/* Anyone can be paid a salary, so anyone can be filtered to. */}
-          {people.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+        <select className="ws-input !w-auto" value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Salaries of">
+          <option value="">Anyone’s pay</option>
+          {/* Only a salary names a person, so this narrows to their salaries. */}
+          {people.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.email}’s pay</option>)}
         </select>
         <input className="ws-input !w-auto min-w-56 flex-1 max-w-sm" type="search" aria-label="Search entries" placeholder="Search party, reference, invoice…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <label className="flex items-center gap-2 text-sm px-2 py-2">
@@ -234,8 +236,8 @@ export default function AccountsApp() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        {ACCOUNT_CATEGORIES.map((c) => {
+      <div className={`grid grid-cols-2 gap-3 mb-4 ${categories.length > 3 ? "lg:grid-cols-4" : "sm:grid-cols-3"}`}>
+        {categories.map((c) => {
           const inr = totals.get(`${c}|INR`) ?? 0;
           const usd = totals.get(`${c}|USD`) ?? 0;
           return (
@@ -258,15 +260,12 @@ export default function AccountsApp() {
         <span className="text-mute"> · {inPeriod.length} entr{inPeriod.length === 1 ? "y" : "ies"}</span>
       </p>
 
-      {perPerson.some((x) => x.salary.length || x.personal.length) && (
+      {salaries.length > 0 && (
         <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm mb-6 px-1">
-          {perPerson.filter((x) => x.salary.length || x.personal.length).map(({ p, salary, personal }) => (
+          <span className="text-mute">Salaries paid:</span>
+          {salaries.map(({ p, list }) => (
             <div key={p.id}>
-              <span className="font-medium">{p.full_name || p.email}</span>
-              <span className="text-mute"> · salary </span>
-              {salary.length ? salary.map((s) => money(s.v, s.cur)).join(" + ") : "—"}
-              <span className="text-mute"> · personal </span>
-              {personal.length ? personal.map((s) => money(s.v, s.cur)).join(" + ") : "—"}
+              <span className="font-medium">{p.full_name || p.email}</span> <span className="tabular-nums">{sumOf(list)}</span>
             </div>
           ))}
         </div>
@@ -282,7 +281,7 @@ export default function AccountsApp() {
               </th>
               <th className="font-normal px-4 py-2.5">Category</th>
               <th className="font-normal px-4 py-2.5">Description</th>
-              <th className="font-normal px-4 py-2.5">Owner</th>
+              <th className="font-normal px-4 py-2.5">Paid to</th>
               <th className="font-normal px-4 py-2.5">Method</th>
               <th className="font-normal px-4 py-2.5 text-right" aria-sort={sort.key === "amount" ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
                 <SortButton label="Amount" on={sort.key === "amount"} dir={sort.dir} onClick={() => setSort((s) => ({ key: "amount", dir: s.key === "amount" ? (s.dir === 1 ? -1 : 1) : -1 }))} />
@@ -307,12 +306,12 @@ export default function AccountsApp() {
                   <td className="px-4 py-2.5 min-w-56">
                     {e.description}
                     <span className="block text-xs text-mute">
-                      {[e.party, e.reference_no && `Ref ${e.reference_no}`, e.gst_applicable && "GST", e.account_files?.length && `${e.account_files.length} receipt${e.account_files.length > 1 ? "s" : ""}`]
+                      {[e.owner_id && e.party, e.reference_no && `Ref ${e.reference_no}`, e.gst_applicable && "GST", e.account_files?.length && `${e.account_files.length} receipt${e.account_files.length > 1 ? "s" : ""}`]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 whitespace-nowrap">{e.owner_id ? nameOf(e.owner_id) : <span className="text-mute">Joint</span>}</td>
+                  <td className="px-4 py-2.5 whitespace-nowrap">{e.owner_id ? nameOf(e.owner_id) : e.party ?? <span className="text-mute">—</span>}</td>
                   <td className="px-4 py-2.5 whitespace-nowrap">{e.payment_method ?? <span className="text-mute">—</span>}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">{money(Number(e.amount), e.currency)}</td>
                 </tr>
@@ -356,7 +355,7 @@ export default function AccountsApp() {
           <thead className="text-left text-mute">
             <tr className="border-b border-line">
               <th className="font-normal px-4 py-2.5">Month</th>
-              {ACCOUNT_CATEGORIES.map((c) => <th key={c} className="font-normal px-4 py-2.5 text-right">{CATEGORY_LABEL[c]}</th>)}
+              {categories.map((c) => <th key={c} className="font-normal px-4 py-2.5 text-right">{CATEGORY_LABEL[c]}</th>)}
               <th className="font-normal px-4 py-2.5 text-right">Total</th>
             </tr>
           </thead>

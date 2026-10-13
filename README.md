@@ -74,8 +74,8 @@ An internal tool served by this same app on the `work.` subdomain:
   subtasks, comments, files, "waits on" dependencies, an activity trail,
   board-owner sign-off and live updates between people.
 - **Documents**: a nested folder cabinet.
-- **Accounts**: the partners' ledger of salaries, purchases, personal and
-  company spend, with GST, receipts and CSV export.
+- **Accounts**: Kavas Consultancy's ledger of salaries, purchases and
+  running costs, with GST, receipts and CSV export.
 - **Team**: partners add people, set roles and passwords, and deactivate
   people.
 - **My account**: everyone can rename themselves and change their password.

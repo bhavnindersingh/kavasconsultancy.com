@@ -4,9 +4,9 @@ import { useRef, useState } from "react";
 import { errorText, formatBytes, objectKey, openObject, removeObjects, uploadObject } from "@/lib/workspace/files";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
 import {
-  ACCOUNT_CATEGORIES,
   CATEGORY_LABEL,
   CURRENCIES,
+  ENTRY_CATEGORIES,
   GST_RATES,
   GSTIN_PATTERN,
   PAYMENT_METHODS,
@@ -38,7 +38,7 @@ function lastUsed(): Partial<Draft> {
   try {
     const v = JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}");
     return {
-      ...(ACCOUNT_CATEGORIES.includes(v.category) ? { category: v.category } : {}),
+      ...(ENTRY_CATEGORIES.includes(v.category) ? { category: v.category } : {}),
       ...(PAYMENT_METHODS.includes(v.payment_method) ? { payment_method: v.payment_method } : {}),
     };
   } catch {
@@ -100,7 +100,7 @@ export default function EntryDialog({
   // The everyday fields are always shown; the rest opens on demand, or by
   // itself when an entry being edited already has any of it.
   const [more, setMore] = useState(
-    Boolean(entry && (entry.party || entry.notes || entry.gst_applicable || entry.paid_from || entry.reference_no || entry.payee_account || entry.bank_narration || entry.currency !== "INR")),
+    Boolean(entry && ((PER_PERSON.includes(entry.category) && entry.party) || entry.notes || entry.gst_applicable || entry.paid_from || entry.reference_no || entry.payee_account || entry.bank_narration || entry.currency !== "INR")),
   );
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,8 +114,8 @@ export default function EntryDialog({
   const set = (k: string, v: string | boolean) => setD((cur) => ({ ...cur, [k]: v }));
   const category = d.category as AccountCategory;
   const perPerson = PER_PERSON.includes(category);
-  // Anyone can be paid a salary; personal spending is a partner's; the rest
-  // is joint or a partner's.
+  // Every expense is the consultancy's; only a salary names a person (anyone
+  // on the team). A retired "personal" entry keeps its partner.
   const owners = category === "salary" ? people : partners;
   const ownerId = str(d.owner_id);
   const ownerGone = ownerId && !owners.some((p) => p.id === ownerId);
@@ -155,7 +155,7 @@ export default function EntryDialog({
     const row = {
       entry_date: d.entry_date,
       category,
-      owner_id: d.owner_id || null,
+      owner_id: perPerson ? d.owner_id || null : null,
       salary_month: category === "salary" && d.salary_month ? `${d.salary_month}-01` : null,
       party: blank("party"),
       description: str(d.description).trim(),
@@ -275,27 +275,29 @@ export default function EntryDialog({
         <Choice
           label="Category"
           value={category}
-          options={ACCOUNT_CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))}
+          options={[...ENTRY_CATEGORIES, ...(entry && !ENTRY_CATEGORIES.includes(entry.category) ? [entry.category] : [])].map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))}
           onChange={(v) =>
             setD((cur) => {
               // Keep whose only if they still fit: anyone for a salary, a partner otherwise.
-              const fits = (v === "salary" ? people : partners).some((p) => p.id === cur.owner_id);
+              const fits = PER_PERSON.includes(v as AccountCategory) && (v === "salary" ? people : partners).some((p) => p.id === cur.owner_id);
               return { ...cur, category: v, owner_id: fits ? cur.owner_id : "" };
             })
           }
         />
 
-        <Choice
-          label={category === "salary" ? "Paid to" : "Whose"}
-          value={ownerId}
-          options={[
-            ...(perPerson ? [] : [{ value: "", label: "Joint" }]),
-            ...owners.map((p) => ({ value: p.id, label: p.full_name || p.email })),
-            // Editing an entry whose person has since left: keep them selectable.
-            ...(ownerGone ? [{ value: ownerId, label: `${nameOf(ownerId)} (no longer here)` }] : []),
-          ]}
-          onChange={(v) => set("owner_id", v)}
-        />
+        {!perPerson && field("party", "Paid to", { placeholder: "Vendor, shop or service", autoComplete: "off" })}
+        {perPerson && (
+          <Choice
+            label={category === "salary" ? "Paid to" : "Whose"}
+            value={ownerId}
+            options={[
+              ...owners.map((p) => ({ value: p.id, label: p.full_name || p.email })),
+              // Editing an entry whose person has since left: keep them selectable.
+              ...(ownerGone ? [{ value: ownerId, label: `${nameOf(ownerId)} (no longer here)` }] : []),
+            ]}
+            onChange={(v) => set("owner_id", v)}
+          />
+        )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
           {field("entry_date", "Date paid", { type: "date", required: true })}
@@ -337,12 +339,12 @@ export default function EntryDialog({
         <div className="rounded-xl border border-line">
           <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium" onClick={() => setMore((m) => !m)} aria-expanded={more}>
             <span className="text-mute">{more ? "▾" : "▸"}</span> More details
-            <span className="font-normal text-mute">— vendor, bank transfer, GST invoice, notes</span>
+            <span className="font-normal text-mute">— bank transfer, GST invoice, notes</span>
           </button>
           {more && (
             <div className="space-y-5 border-t border-line p-3">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                {field("party", category === "salary" ? "Name on the transfer" : "Vendor / party")}
+                {perPerson && field("party", "Name on the transfer")}
                 {category === "salary" && field("salary_month", "Salary for month", { type: "month" })}
               </div>
 

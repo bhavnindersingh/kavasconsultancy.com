@@ -121,8 +121,16 @@ export const CATEGORY_LABEL: Record<AccountCategory, string> = {
   company: "Company",
 };
 
-/** A salary or a personal expense is always one partner's. */
+/** A salary or a personal expense is always one person's. */
 export const PER_PERSON: AccountCategory[] = ["salary", "personal"];
+
+/**
+ * Kavas spends as a company: every expense is the consultancy's, and only a
+ * salary names a person. "Personal" is no longer offered; it stays in the
+ * schema so any old entries still read and can be re-filed.
+ */
+export const RETIRED_CATEGORIES: AccountCategory[] = ["personal"];
+export const ENTRY_CATEGORIES = ACCOUNT_CATEGORIES.filter((c) => !RETIRED_CATEGORIES.includes(c));
 
 export const CURRENCIES = ["INR", "USD"] as const;
 export type Currency = (typeof CURRENCIES)[number];

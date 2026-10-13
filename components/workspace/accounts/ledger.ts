@@ -1,9 +1,6 @@
 import type { Currency } from "@/lib/workspace/types";
 import { today } from "../tasks/bits";
 
-/** Owner filter value for a joint entry (owner_id null). */
-export const JOINT = "joint";
-
 export type Period = "this_month" | "last_month" | "this_fy" | "last_fy" | "all" | "custom";
 
 export function money(v: number, currency: Currency) {
