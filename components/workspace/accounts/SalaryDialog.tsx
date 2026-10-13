@@ -11,10 +11,12 @@ type Last = Pick<AccountEntry, "owner_id" | "amount" | "currency" | "payment_met
 type Paid = Pick<AccountEntry, "id" | "owner_id" | "amount" | "currency" | "entry_date">;
 
 /**
- * Pay salaries: for a month, each partner's last salary (pre-filled) and what
- * is already recorded for that month, so a salary is never entered twice.
+ * Pay salaries: for a month, everyone on the team — partners and members —
+ * with their last salary pre-filled and what is already recorded for that
+ * month, so a salary is never entered twice. "Record all" pays everyone who
+ * has an amount and isn't paid yet.
  */
-export default function SalaryDialog({ partners, onClose, onSaved }: { partners: Profile[]; onClose: () => void; onSaved: () => void }) {
+export default function SalaryDialog({ people, onClose, onSaved }: { people: Profile[]; onClose: () => void; onSaved: () => void }) {
   const supabase = supabaseBrowser();
   const [month, setMonth] = useState(monthKey(today()));
   const [last, setLast] = useState<Record<string, Last>>({});
@@ -22,9 +24,12 @@ export default function SalaryDialog({ partners, onClose, onSaved }: { partners:
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // Partners first, then members, each by name.
+  const team = [...people].sort((a, b) => (a.role === b.role ? 0 : a.role === "partner" ? -1 : 1));
 
   const load = useCallback(async () => {
-    const ids = partners.map((p) => p.id);
+    const ids = people.map((p) => p.id);
     const [l, p] = await Promise.all([
       supabase
         .from("account_entries")
@@ -47,30 +52,45 @@ export default function SalaryDialog({ partners, onClose, onSaved }: { partners:
     setLast(byOwner);
     setPaid((p.data ?? []) as Paid[]);
     setAmounts(Object.fromEntries(ids.map((id) => [id, byOwner[id] ? String(byOwner[id].amount) : ""])));
-  }, [supabase, partners, month]);
+  }, [supabase, people, month]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- refetch per month
     load();
   }, [load]);
 
-  async function record(p: Profile) {
+  const rowFor = (p: Profile) => {
     const l = last[p.id];
-    const amount = Number(amounts[p.id]);
-    if (!amount) return setError("Enter an amount first.");
-    const { error } = await supabase.from("account_entries").insert({
+    return {
       entry_date: today(),
       category: "salary",
       owner_id: p.id,
       salary_month: `${month}-01`,
       description: `Salary — ${monthLabel(month)}`,
       party: l?.party ?? (p.full_name || p.email),
-      amount,
       currency: (l?.currency ?? "INR") as Currency,
       payment_method: l?.payment_method ?? "Bank transfer",
       paid_from: l?.paid_from ?? null,
       payee_account: l?.payee_account ?? null,
-    });
+    };
+  };
+
+  async function record(p: Profile) {
+    if (!Number(amounts[p.id])) return setError(`Enter ${p.full_name || p.email}’s amount first.`);
+    setError(null);
+    const { error } = await supabase.from("account_entries").insert({ ...rowFor(p), amount: Number(amounts[p.id]) });
+    if (error) return setError(error.message);
+    setSaved(true);
+    load();
+  }
+
+  const unpaid = team.filter((p) => Number(amounts[p.id]) > 0 && !paid.some((x) => x.owner_id === p.id));
+  async function recordAll() {
+    if (!unpaid.length) return;
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.from("account_entries").insert(unpaid.map((p) => ({ ...rowFor(p), amount: Number(amounts[p.id]) })));
+    setBusy(false);
     if (error) return setError(error.message);
     setSaved(true);
     load();
@@ -83,18 +103,20 @@ export default function SalaryDialog({ partners, onClose, onSaved }: { partners:
           <label className="ws-label" htmlFor="s-month">Salary for</label>
           <input id="s-month" type="month" className="ws-input" value={month} onChange={(e) => setMonth(e.target.value)} />
         </div>
-        {partners.map((p) => {
+        {team.map((p) => {
           const done = paid.filter((x) => x.owner_id === p.id);
           const l = last[p.id];
           return (
-            <div key={p.id} className="rounded-xl border border-line bg-card p-3">
+            <div key={p.id} className={`rounded-xl border p-3 ${done.length ? "border-[#abefc6] bg-[#f6fef9]" : "border-line bg-card"}`}>
               <div className="flex justify-between gap-2 mb-2">
-                <span className="font-medium">{p.full_name || p.email}</span>
+                <span className="font-medium">
+                  {p.full_name || p.email} <span className="text-xs font-normal text-mute capitalize">{p.role}</span>
+                </span>
                 {l && <span className="text-xs text-mute">last {money(Number(l.amount), l.currency)}{l.payment_method && ` · ${l.payment_method}`}</span>}
               </div>
               {done.length > 0 && (
-                <p className="text-sm text-body mb-2">
-                  Already recorded: {done.map((x) => `${money(Number(x.amount), x.currency)} on ${x.entry_date}`).join(", ")}
+                <p className="text-sm text-[#067647] mb-2">
+                  ✓ Paid: {done.map((x) => `${money(Number(x.amount), x.currency)} on ${x.entry_date}`).join(", ")}
                 </p>
               )}
               <div className="flex gap-2">
@@ -115,7 +137,15 @@ export default function SalaryDialog({ partners, onClose, onSaved }: { partners:
             </div>
           );
         })}
-        {error && <p className="text-sm text-[#b42318]">{error}</p>}
+        {error && <p className="text-sm text-[#b42318]" role="alert">{error}</p>}
+        <div className="flex items-center justify-between gap-3 border-t border-line pt-3">
+          <span className="text-sm text-mute">
+            {unpaid.length ? `${unpaid.length} of ${team.length} still to pay for ${monthLabel(month)}` : `Everyone with an amount is paid for ${monthLabel(month)}`}
+          </span>
+          <button className="ws-btn ws-btn--primary" disabled={busy || !unpaid.length} onClick={recordAll}>
+            {busy ? "Recording…" : `Record all${unpaid.length ? ` (${unpaid.length})` : ""}`}
+          </button>
+        </div>
         <p className="text-xs text-mute">Recorded with today’s date and the last salary’s payment details. Edit the entry afterwards to add a reference number.</p>
       </div>
     </Modal>

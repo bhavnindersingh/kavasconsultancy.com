@@ -122,9 +122,9 @@ export default function AccountsApp() {
     return out;
   }, [inPeriod]);
 
-  const perPartner = useMemo(
+  const perPerson = useMemo(
     () =>
-      partners.map((p) => {
+      people.map((p) => {
         const mine = inPeriod.filter((e) => e.owner_id === p.id);
         const sum = (c: AccountCategory) =>
           (["INR", "USD"] as Currency[])
@@ -132,7 +132,7 @@ export default function AccountsApp() {
             .filter((x) => x.v > 0);
         return { p, salary: sum("salary"), personal: sum("personal") };
       }),
-    [partners, inPeriod],
+    [people, inPeriod],
   );
 
   const trendRows = useMemo(() => {
@@ -185,7 +185,7 @@ export default function AccountsApp() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="ws-btn" onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
-          {partners.length > 0 && <button className="ws-btn" onClick={() => setPaying(true)}>Pay salaries</button>}
+          {people.length > 0 && <button className="ws-btn" onClick={() => setPaying(true)}>Pay salaries</button>}
           <button className="ws-btn ws-btn--primary" onClick={() => setEditing("new")}>New entry</button>
         </div>
       </header>
@@ -219,7 +219,8 @@ export default function AccountsApp() {
         <select className="ws-input !w-auto" value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Owner">
           <option value="">Everyone</option>
           <option value={JOINT}>Joint</option>
-          {partners.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+          {/* Anyone can be paid a salary, so anyone can be filtered to. */}
+          {people.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
         </select>
         <input className="ws-input !w-auto min-w-56 flex-1 max-w-sm" type="search" aria-label="Search entries" placeholder="Search party, reference, invoice…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <label className="flex items-center gap-2 text-sm px-2 py-2">
@@ -257,9 +258,9 @@ export default function AccountsApp() {
         <span className="text-mute"> · {inPeriod.length} entr{inPeriod.length === 1 ? "y" : "ies"}</span>
       </p>
 
-      {perPartner.some((x) => x.salary.length || x.personal.length) && (
+      {perPerson.some((x) => x.salary.length || x.personal.length) && (
         <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm mb-6 px-1">
-          {perPartner.map(({ p, salary, personal }) => (
+          {perPerson.filter((x) => x.salary.length || x.personal.length).map(({ p, salary, personal }) => (
             <div key={p.id}>
               <span className="font-medium">{p.full_name || p.email}</span>
               <span className="text-mute"> · salary </span>
@@ -404,15 +405,15 @@ export default function AccountsApp() {
           entry={editing === "new" ? null : editing}
           partners={partners}
           onClose={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
+          onSaved={(another) => {
+            if (!another) setEditing(null);
             load();
           }}
         />
       )}
       {paying && (
         <SalaryDialog
-          partners={partners}
+          people={people}
           onClose={() => setPaying(false)}
           onSaved={() => {
             setPaying(false);

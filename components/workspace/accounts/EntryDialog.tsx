@@ -19,6 +19,7 @@ import {
 } from "@/lib/workspace/types";
 import ConfirmButton from "../ConfirmButton";
 import Modal from "../Modal";
+import { useWorkspace } from "../WorkspaceContext";
 import { today } from "../tasks/bits";
 import { splitGst } from "./ledger";
 
@@ -29,6 +30,26 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024;
 type Draft = Record<string, string | boolean>;
 
 const str = (v: unknown) => (v == null ? "" : String(v));
+
+// The last category and payment method used, so a run of similar entries
+// needs fewer taps. Per viewer, and optional: storage may be unavailable.
+const LAST_KEY = "ws-accounts-last";
+function lastUsed(): Partial<Draft> {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_KEY) ?? "{}");
+    return {
+      ...(ACCOUNT_CATEGORIES.includes(v.category) ? { category: v.category } : {}),
+      ...(PAYMENT_METHODS.includes(v.payment_method) ? { payment_method: v.payment_method } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+function remember(d: Draft) {
+  try {
+    localStorage.setItem(LAST_KEY, JSON.stringify({ category: d.category, payment_method: d.payment_method }));
+  } catch {}
+}
 
 function toDraft(e: AccountEntry | null, defaults?: Partial<Draft>): Draft {
   return {
@@ -68,16 +89,24 @@ export default function EntryDialog({
   partners: Profile[];
   defaults?: Partial<Draft>;
   onClose: () => void;
-  onSaved: () => void;
+  /** `another`: the dialog stays open for the next entry. */
+  onSaved: (another?: boolean) => void;
 }) {
   const supabase = supabaseBrowser();
-  const [d, setD] = useState<Draft>(() => toDraft(entry, defaults));
+  const { people, nameOf } = useWorkspace();
+  const [d, setD] = useState<Draft>(() => toDraft(entry, entry ? defaults : { ...lastUsed(), ...defaults }));
   const [files, setFiles] = useState<AccountFile[]>(entry?.account_files ?? []);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
-  const [showTransfer, setShowTransfer] = useState(Boolean(entry?.paid_from || entry?.reference_no || entry?.payee_account || entry?.bank_narration));
+  // The everyday fields are always shown; the rest opens on demand, or by
+  // itself when an entry being edited already has any of it.
+  const [more, setMore] = useState(
+    Boolean(entry && (entry.party || entry.notes || entry.gst_applicable || entry.paid_from || entry.reference_no || entry.payee_account || entry.bank_narration || entry.currency !== "INR")),
+  );
+  const [savedNote, setSavedNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
   // Set once the row exists, so a retry after a failed receipt upload updates
   // the entry instead of inserting it twice.
   const savedId = useRef<string | null>(entry?.id ?? null);
@@ -85,6 +114,11 @@ export default function EntryDialog({
   const set = (k: string, v: string | boolean) => setD((cur) => ({ ...cur, [k]: v }));
   const category = d.category as AccountCategory;
   const perPerson = PER_PERSON.includes(category);
+  // Anyone can be paid a salary; personal spending is a partner's; the rest
+  // is joint or a partner's.
+  const owners = category === "salary" ? people : partners;
+  const ownerId = str(d.owner_id);
+  const ownerGone = ownerId && !owners.some((p) => p.id === ownerId);
 
   function fillGst() {
     const amount = Number(d.amount);
@@ -107,10 +141,12 @@ export default function EntryDialog({
     if (fileInput.current) fileInput.current.value = "";
   }
 
-  async function save(e: React.FormEvent) {
+  async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const another = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "another";
     setError(null);
-    if (perPerson && !d.owner_id) return setError(`${category === "salary" ? "A salary" : "A personal expense"} belongs to one partner — pick whose.`);
+    setSavedNote(null);
+    if (perPerson && !d.owner_id) return setError(category === "salary" ? "Pick who the salary is for." : "A personal expense belongs to one partner — pick whose.");
     const gstin = str(d.vendor_gstin).trim().toUpperCase();
     if (d.gst_applicable && gstin && !GSTIN_PATTERN.test(gstin)) return setError("That GSTIN doesn't look right (15 characters, e.g. 27AAPFU0939F1ZV).");
 
@@ -159,6 +195,18 @@ export default function EntryDialog({
         }
         setPendingFiles((cur) => cur.filter((f) => f !== file));
       }
+      if (!entry) remember(d);
+      if (another) {
+        // Keep the date, category, whose and method; clear what's specific.
+        setSavedNote(`Saved “${row.description}”. Next one:`);
+        setD((cur) => ({ ...toDraft(null), entry_date: cur.entry_date, category: cur.category, owner_id: cur.owner_id, payment_method: cur.payment_method, currency: cur.currency }));
+        setFiles([]);
+        savedId.current = null;
+        setSaving(false);
+        onSaved(true);
+        amountRef.current?.focus();
+        return;
+      }
       onSaved();
     } catch (err) {
       setError(errorText(err));
@@ -191,119 +239,198 @@ export default function EntryDialog({
   return (
     <Modal title={entry ? "Edit entry" : "New entry"} onClose={onClose} wide>
       <form onSubmit={save} className="space-y-5">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {field("entry_date", "Date", { type: "date", required: true })}
+        {savedNote && <p className="rounded-lg bg-[#ecfdf3] px-3 py-2 text-sm text-[#067647]" role="status">{savedNote}</p>}
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,14rem)_1fr]">
           <div>
-            <label className="ws-label" htmlFor="e-category">Category</label>
-            <select id="e-category" className="ws-input" value={category} onChange={(e) => set("category", e.target.value)}>
-              {ACCOUNT_CATEGORIES.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="ws-label" htmlFor="e-owner">Whose</label>
-            <select id="e-owner" className="ws-input" value={str(d.owner_id)} onChange={(e) => set("owner_id", e.target.value)}>
-              {!perPerson && <option value="">Joint</option>}
-              {perPerson && <option value="">Pick a partner</option>}
-              {partners.map((p) => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
-            </select>
-          </div>
-          {category === "salary" && field("salary_month", "For month", { type: "month" })}
-          <div className="col-span-2">{field("description", "Description", { required: true, placeholder: "What it was for" })}</div>
-          {field("party", category === "salary" ? "Paid to" : "Vendor / party")}
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            {field("amount", "Amount", { type: "number", min: 0, step: "0.01", required: true, inputMode: "decimal" })}
-            <div>
-              <label className="ws-label" htmlFor="e-currency">&nbsp;</label>
-              <select id="e-currency" className="ws-input" value={str(d.currency)} onChange={(e) => set("currency", e.target.value)}>
+            <label className="ws-label" htmlFor="e-amount">Amount</label>
+            <div className="flex">
+              <select
+                aria-label="Currency"
+                className="ws-input !w-auto rounded-r-none border-r-0"
+                value={str(d.currency)}
+                onChange={(e) => set("currency", e.target.value)}
+              >
                 {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
               </select>
+              <input
+                ref={amountRef}
+                id="e-amount"
+                className="ws-input rounded-l-none text-lg tabular-nums"
+                type="number"
+                min={0}
+                step="0.01"
+                inputMode="decimal"
+                required
+                autoFocus={!entry}
+                placeholder="0"
+                value={str(d.amount)}
+                onChange={(e) => set("amount", e.target.value)}
+              />
             </div>
           </div>
-          <div>
-            <label className="ws-label" htmlFor="e-method">Payment method</label>
-            <select id="e-method" className="ws-input" value={str(d.payment_method)} onChange={(e) => set("payment_method", e.target.value)}>
-              <option value="">—</option>
-              {PAYMENT_METHODS.map((m) => <option key={m}>{m}</option>)}
-            </select>
-          </div>
+          {field("description", "What was it for?", { required: true, placeholder: category === "salary" ? "e.g. Salary — October" : "e.g. Office internet, October" })}
         </div>
 
-        <fieldset className="rounded-xl border border-line p-3">
-          <button type="button" className="text-sm font-medium" onClick={() => setShowTransfer((s) => !s)} aria-expanded={showTransfer}>
-            {showTransfer ? "▾" : "▸"} Transfer details <span className="text-mute font-normal">— what the bank statement shows</span>
-          </button>
-          {showTransfer && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-              {field("paid_from", "Paid from", { placeholder: "e.g. HDFC current a/c" })}
-              {field("reference_no", "Reference / UTR")}
-              {field("payee_account", "Payee account / UPI ID")}
-              {field("bank_narration", "Bank narration")}
-            </div>
-          )}
-        </fieldset>
+        <Choice
+          label="Category"
+          value={category}
+          options={ACCOUNT_CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))}
+          onChange={(v) =>
+            setD((cur) => {
+              // Keep whose only if they still fit: anyone for a salary, a partner otherwise.
+              const fits = (v === "salary" ? people : partners).some((p) => p.id === cur.owner_id);
+              return { ...cur, category: v, owner_id: fits ? cur.owner_id : "" };
+            })
+          }
+        />
 
-        <fieldset className="rounded-xl border border-line p-3">
-          <label className="flex items-center gap-2 text-sm font-medium">
-            <input type="checkbox" checked={Boolean(d.gst_applicable)} onChange={(e) => set("gst_applicable", e.target.checked)} />
-            GST invoice
-          </label>
-          {d.gst_applicable && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-              {field("vendor_gstin", "Vendor GSTIN", { maxLength: 15, className: "ws-input uppercase" })}
-              {field("invoice_no", "Invoice no.")}
-              {field("invoice_date", "Invoice date", { type: "date" })}
-              <div>
-                <label className="ws-label" htmlFor="e-gst_rate">GST rate %</label>
-                <select id="e-gst_rate" className="ws-input" value={str(d.gst_rate)} onChange={(e) => set("gst_rate", e.target.value)}>
-                  <option value="">—</option>
-                  {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
-                </select>
-              </div>
-              {field("taxable_value", "Taxable value", { type: "number", min: 0, step: "0.01" })}
-              {field("gst_amount", "GST amount", { type: "number", min: 0, step: "0.01" })}
-              <div className="col-span-full">
-                <button type="button" className="text-sm underline underline-offset-2 text-body" onClick={fillGst} disabled={!d.amount || d.gst_rate === ""}>
-                  Work out taxable value and GST from the amount
-                </button>
-              </div>
-            </div>
-          )}
-        </fieldset>
+        <Choice
+          label={category === "salary" ? "Paid to" : "Whose"}
+          value={ownerId}
+          options={[
+            ...(perPerson ? [] : [{ value: "", label: "Joint" }]),
+            ...owners.map((p) => ({ value: p.id, label: p.full_name || p.email })),
+            // Editing an entry whose person has since left: keep them selectable.
+            ...(ownerGone ? [{ value: ownerId, label: `${nameOf(ownerId)} (no longer here)` }] : []),
+          ]}
+          onChange={(v) => set("owner_id", v)}
+        />
 
-        <div>
-          <label className="ws-label" htmlFor="e-notes">Notes</label>
-          <textarea id="e-notes" className="ws-input" rows={2} value={str(d.notes)} onChange={(e) => set("notes", e.target.value)} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
+          {field("entry_date", "Date paid", { type: "date", required: true })}
+          <Choice
+            label="Paid by"
+            value={str(d.payment_method)}
+            options={PAYMENT_METHODS.map((m) => ({ value: m, label: m }))}
+            onChange={(v) => set("payment_method", d.payment_method === v ? "" : v)}
+          />
         </div>
 
         <section>
-          <h3 className="text-sm font-medium mb-2">Receipts</h3>
-          <ul className="space-y-1 mb-2 text-sm">
-            {files.map((f) => (
-              <li key={f.id} className="flex items-center gap-2">
-                <button type="button" className="flex-1 truncate text-left underline underline-offset-2" onClick={() => openObject("account-files", f.storage_path).catch((e) => setError(errorText(e)))}>
-                  {f.name}
-                </button>
-                <span className="text-xs text-mute">{formatBytes(f.file_size)}</span>
-                <button type="button" className="text-mute" onClick={() => removeFile(f)} aria-label={`Remove ${f.name}`}>✕</button>
-              </li>
-            ))}
-            {pendingFiles.map((f, i) => (
-              <li key={`${f.name}-${i}`} className="flex items-center gap-2 text-body">
-                <span className="flex-1 truncate">{f.name} <span className="text-mute">(uploads on save)</span></span>
-                <button type="button" className="text-mute" onClick={() => setPendingFiles((cur) => cur.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`}>✕</button>
-              </li>
-            ))}
-          </ul>
-          <input ref={fileInput} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => pick(e.target.files)} />
-          <button type="button" className="ws-btn" onClick={() => fileInput.current?.click()}>Add receipt</button>
+          <div className="flex flex-wrap items-center gap-2">
+            <input ref={fileInput} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => pick(e.target.files)} />
+            <button type="button" className="ws-btn" onClick={() => fileInput.current?.click()}>Attach receipt</button>
+            <span className="text-xs text-mute">Image or PDF, up to 10 MB</span>
+          </div>
+          {(files.length > 0 || pendingFiles.length > 0) && (
+            <ul className="mt-2 space-y-1 text-sm">
+              {files.map((f) => (
+                <li key={f.id} className="flex items-center gap-2">
+                  <button type="button" className="flex-1 truncate text-left underline underline-offset-2" onClick={() => openObject("account-files", f.storage_path).catch((e) => setError(errorText(e)))}>
+                    {f.name}
+                  </button>
+                  <span className="text-xs text-mute">{formatBytes(f.file_size)}</span>
+                  <button type="button" className="text-mute" onClick={() => removeFile(f)} aria-label={`Remove ${f.name}`}>✕</button>
+                </li>
+              ))}
+              {pendingFiles.map((f, i) => (
+                <li key={`${f.name}-${i}`} className="flex items-center gap-2 text-body">
+                  <span className="flex-1 truncate">{f.name} <span className="text-mute">(uploads on save)</span></span>
+                  <button type="button" className="text-mute" onClick={() => setPendingFiles((cur) => cur.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`}>✕</button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
+
+        <div className="rounded-xl border border-line">
+          <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium" onClick={() => setMore((m) => !m)} aria-expanded={more}>
+            <span className="text-mute">{more ? "▾" : "▸"}</span> More details
+            <span className="font-normal text-mute">— vendor, bank transfer, GST invoice, notes</span>
+          </button>
+          {more && (
+            <div className="space-y-5 border-t border-line p-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {field("party", category === "salary" ? "Name on the transfer" : "Vendor / party")}
+                {category === "salary" && field("salary_month", "Salary for month", { type: "month" })}
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-medium">Bank transfer <span className="font-normal text-mute">— what the statement shows</span></p>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {field("paid_from", "Paid from", { placeholder: "e.g. HDFC current a/c" })}
+                  {field("reference_no", "Reference / UTR")}
+                  {field("payee_account", "Payee account / UPI ID")}
+                  {field("bank_narration", "Bank narration")}
+                </div>
+              </div>
+
+              <fieldset>
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input type="checkbox" checked={Boolean(d.gst_applicable)} onChange={(e) => set("gst_applicable", e.target.checked)} />
+                  GST invoice
+                </label>
+                {d.gst_applicable && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
+                    {field("vendor_gstin", "Vendor GSTIN", { maxLength: 15, className: "ws-input uppercase" })}
+                    {field("invoice_no", "Invoice no.")}
+                    {field("invoice_date", "Invoice date", { type: "date" })}
+                    <div>
+                      <label className="ws-label" htmlFor="e-gst_rate">GST rate %</label>
+                      <select id="e-gst_rate" className="ws-input" value={str(d.gst_rate)} onChange={(e) => set("gst_rate", e.target.value)}>
+                        <option value="">—</option>
+                        {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+                      </select>
+                    </div>
+                    {field("taxable_value", "Taxable value", { type: "number", min: 0, step: "0.01" })}
+                    {field("gst_amount", "GST amount", { type: "number", min: 0, step: "0.01" })}
+                    <div className="col-span-full">
+                      <button type="button" className="text-sm underline underline-offset-2 text-body" onClick={fillGst} disabled={!d.amount || d.gst_rate === ""}>
+                        Work out taxable value and GST from the amount
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </fieldset>
+
+              <div>
+                <label className="ws-label" htmlFor="e-notes">Notes</label>
+                <textarea id="e-notes" className="ws-input" rows={2} value={str(d.notes)} onChange={(e) => set("notes", e.target.value)} />
+              </div>
+            </div>
+          )}
+        </div>
 
         {error && <p className="text-sm text-[#b42318]" role="alert">{error}</p>}
         <div className="flex items-center justify-between pt-2 border-t border-line">
           {entry ? <ConfirmButton label="Delete entry" confirmLabel="Delete entry and receipts?" onConfirm={removeEntry} /> : <span />}
-          <button type="submit" className="ws-btn ws-btn--primary mt-3" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+          <div className="mt-3 flex gap-2">
+            {!entry && (
+              <button type="submit" name="then" value="another" className="ws-btn" disabled={saving}>
+                Save and add another
+              </button>
+            )}
+            <button type="submit" className="ws-btn ws-btn--primary" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+          </div>
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** A row of tap-to-pick buttons: quicker than a dropdown for a handful of options. */
+function Choice({ label, value, options, onChange }: { label: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
+  return (
+    <div role="radiogroup" aria-label={label}>
+      <span className="ws-label">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => {
+          const on = o.value === value;
+          return (
+            <button
+              key={o.value || "none"}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => onChange(o.value)}
+              className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${on ? "border-ink bg-ink text-paper" : "border-line bg-card hover:border-ghost"}`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
