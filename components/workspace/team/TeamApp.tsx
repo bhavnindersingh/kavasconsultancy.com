@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { addMember, sendAccessEmail, setMemberPassword, updateMember, type ActionResult } from "@/app/(workspace)/workspace/(app)/team/actions";
 import { MIN_PASSWORD, type Profile, type Role } from "@/lib/workspace/types";
 import Modal from "../Modal";
 import { useWorkspace } from "../WorkspaceContext";
+import { Disc } from "../tasks/bits";
+import TwoTap from "../tasks/TwoTap";
 
 export type TeamMember = Profile & { created_at?: string; last_sign_in_at: string | null; invite_pending: boolean };
 
@@ -36,21 +38,41 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
           : `Sent ${m.email} a link to choose a new password. It works for an hour.`,
     );
 
-  const active = members.filter((m) => m.is_active);
-  const inactive = members.filter((m) => !m.is_active);
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const shown = q ? members.filter((m) => `${m.full_name ?? ""} ${m.email}`.toLowerCase().includes(q)) : members;
+  const active = shown.filter((m) => m.is_active);
+  const inactive = shown.filter((m) => !m.is_active);
+  const everyoneActive = members.filter((m) => m.is_active);
+  const partners = everyoneActive.filter((m) => m.role === "partner").length;
+  const invited = everyoneActive.filter((m) => m.invite_pending).length;
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-5xl">
       <header className="flex flex-wrap items-end justify-between gap-3 mb-6">
         <div>
           <h1 className="font-serif text-3xl">Team</h1>
           <p className="text-sm text-mute mt-1">
-            Members work Tasks. Partners also see Documents, Accounts and this page.
+            {everyoneActive.length} {everyoneActive.length === 1 ? "person" : "people"} · {partners} partner{partners === 1 ? "" : "s"}
+            {invited > 0 && ` · ${invited} invite${invited === 1 ? "" : "s"} waiting`}
+            {" · "}Members work Tasks. Partners also see Documents, Accounts and this page.
           </p>
         </div>
-        <button className="ws-btn ws-btn--primary" disabled={!adminReady} onClick={() => setAdding(true)}>
-          Add person
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {members.length > 6 && (
+            <input
+              className="ws-input !w-56"
+              type="search"
+              placeholder="Find a person…"
+              aria-label="Find a person"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          )}
+          <button className="ws-btn ws-btn--primary" disabled={!adminReady} onClick={() => setAdding(true)}>
+            Add person
+          </button>
+        </div>
       </header>
 
       {!adminReady && (
@@ -66,17 +88,21 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
       )}
       {notice && <p className="mb-4 rounded-lg bg-[#ecfdf3] text-[#067647] px-3 py-2 text-sm" role="status">{notice}</p>}
 
-      <MemberTable
-        members={active}
-        meId={me.id}
-        pending={pending}
-        adminReady={adminReady}
-        onEdit={setEditing}
-        onPassword={setPasswordFor}
-        onEmail={emailAccess}
-        onRole={(m, role) => run(() => updateMember(m.id, { role }), `${label(m)} is now a ${role}.`)}
-        onActive={(m, is_active) => run(() => updateMember(m.id, { is_active }), `${label(m)} has been deactivated.`)}
-      />
+      {q && !shown.length && <p className="mb-4 text-sm text-mute">Nobody matches “{query.trim()}”.</p>}
+
+      {active.length > 0 && (
+        <MemberTable
+          members={active}
+          meId={me.id}
+          pending={pending}
+          adminReady={adminReady}
+          onEdit={setEditing}
+          onPassword={setPasswordFor}
+          onEmail={emailAccess}
+          onRole={(m, role) => run(() => updateMember(m.id, { role }), `${label(m)} is now a ${role}.`)}
+          onActive={(m, is_active) => run(() => updateMember(m.id, { is_active }), `${label(m)} has been deactivated.`)}
+        />
+      )}
 
       {inactive.length > 0 && (
         <>
@@ -117,7 +143,7 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
           onClose={() => setEditing(null)}
           onSave={(full_name) => {
             setEditing(null);
-            run(() => updateMember(editing.id, { full_name }));
+            run(() => updateMember(editing.id, { full_name }), `Renamed to ${full_name}.`);
           }}
         />
       )}
@@ -137,12 +163,22 @@ export default function TeamApp({ members, adminReady }: { members: TeamMember[]
 
 const label = (m: Profile) => m.full_name || m.email;
 
-function lastSeen(m: TeamMember) {
+/** How recently they were in, as a badge: invite waiting, never, or how long ago. */
+function presence(m: TeamMember): { text: string; title?: string; tone: "warn" | "quiet" | "ok" } {
+  if (m.invite_pending) return { text: "Invite waiting", tone: "warn" };
   const at = m.last_sign_in_at;
-  if (m.invite_pending) return "Invited — hasn’t accepted yet";
-  if (!at) return "Never signed in";
-  return `Last in ${new Date(at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
+  if (!at) return { text: "Never signed in", tone: "warn" };
+  const title = new Date(at).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+  const days = Math.floor((Date.now() - Date.parse(at)) / 86_400_000);
+  const text = days < 1 ? "In today" : days === 1 ? "In yesterday" : days < 30 ? `In ${days} days ago` : days < 365 ? `In ${Math.floor(days / 30)} mo ago` : "In over a year ago";
+  return { text, title: `Last signed in ${title}`, tone: days > 30 ? "quiet" : "ok" };
 }
+
+const TONE = {
+  warn: "bg-[#fffaeb] text-[#b54708]",
+  quiet: "bg-cream text-mute",
+  ok: "bg-[#ecfdf3] text-[#067647]",
+};
 
 function MemberTable({
   members,
@@ -166,48 +202,117 @@ function MemberTable({
   onActive: (m: TeamMember, active: boolean) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-line bg-card divide-y divide-line">
-      {members.map((m) => (
-        <div key={m.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-          <div className="min-w-0 flex-1 basis-56">
-            <div className="truncate" title={label(m)}>
-              {label(m)}
-              {m.id === meId && <span className="text-mute text-sm"> (you)</span>}
+    <ul className="rounded-2xl border border-line bg-card divide-y divide-line">
+      {members.map((m) => {
+        const seen = presence(m);
+        const you = m.id === meId;
+        return (
+          <li key={m.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+            <Disc id={m.id} name={label(m)} size={36} />
+            <div className="min-w-0 flex-1 basis-48">
+              <div className="truncate font-medium" title={label(m)}>
+                {label(m)}
+                {you && <span className="font-normal text-mute text-sm"> (you)</span>}
+              </div>
+              <div className="truncate text-xs text-mute" title={m.email}>{m.email}</div>
             </div>
-            <div className="truncate text-xs text-mute">
-              {m.email} · {lastSeen(m)}
-            </div>
-          </div>
-          <select
-            className="ws-input !w-auto"
-            value={m.role}
-            disabled={pending}
-            aria-label={`Role for ${label(m)}`}
-            onChange={(e) => onRole(m, e.target.value as Role)}
-          >
-            <option value="member">Member</option>
-            <option value="partner">Partner</option>
-          </select>
-          <div className="flex flex-wrap gap-2">
-            <button className="ws-btn" disabled={pending} onClick={() => onEdit(m)}>Rename</button>
             {m.is_active && (
-              <button className="ws-btn" disabled={pending || !adminReady} onClick={() => onEmail(m)}>
-                {m.invite_pending ? "Resend invite" : "Email sign-in link"}
-              </button>
+              <span className={`ws-chip text-xs ${TONE[seen.tone]}`} title={seen.title}>
+                {seen.text}
+              </span>
             )}
-            <button className="ws-btn" disabled={pending || !adminReady} onClick={() => onPassword(m)}>Set password</button>
-            {m.is_active ? (
-              m.id !== meId && (
-                <button className="ws-btn ws-btn--danger" disabled={pending} onClick={() => onActive(m, false)}>
-                  Deactivate
-                </button>
-              )
-            ) : (
-              <button className="ws-btn" disabled={pending} onClick={() => onActive(m, true)}>Reactivate</button>
-            )}
-          </div>
+            <select
+              className="ws-input !w-auto"
+              value={m.role}
+              disabled={pending}
+              aria-label={`Role for ${label(m)}`}
+              onChange={(e) => onRole(m, e.target.value as Role)}
+            >
+              <option value="member">Member</option>
+              <option value="partner">Partner</option>
+            </select>
+            <div className="flex items-center gap-2">
+              {m.is_active && m.invite_pending && (
+                <button className="ws-btn" disabled={pending || !adminReady} onClick={() => onEmail(m)}>Resend invite</button>
+              )}
+              {!m.is_active && (
+                <button className="ws-btn" disabled={pending} onClick={() => onActive(m, true)}>Reactivate</button>
+              )}
+              <RowMenu
+                name={label(m)}
+                items={[
+                  { label: "Rename", run: () => onEdit(m) },
+                  ...(m.is_active && !m.invite_pending
+                    ? [{ label: "Email a sign-in link", run: () => onEmail(m), disabled: !adminReady }]
+                    : []),
+                  { label: "Set a password", run: () => onPassword(m), disabled: !adminReady },
+                ]}
+                disabled={pending}
+              />
+              {m.is_active && !you && (
+                <TwoTap
+                  label="Deactivate"
+                  armedLabel="Tap again to deactivate"
+                  title={`${label(m)} can’t sign in until reactivated; their work stays`}
+                  disabled={pending}
+                  onConfirm={() => onActive(m, false)}
+                />
+              )}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The quieter actions behind a ⋯ button, so each row shows only what's usually needed. */
+function RowMenu({ name, items, disabled }: { name: string; items: { label: string; run: () => void; disabled?: boolean }[]; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+  return (
+    <div ref={box} className="relative">
+      <button
+        className="ws-btn !px-2.5"
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`More for ${name}`}
+        title="More"
+        onClick={() => setOpen((o) => !o)}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div role="menu" className="absolute right-0 top-full z-30 mt-1 min-w-48 rounded-xl border border-line bg-card p-1 shadow-xl">
+          {items.map((it) => (
+            <button
+              key={it.label}
+              role="menuitem"
+              disabled={it.disabled}
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-cream disabled:text-ghost disabled:hover:bg-transparent"
+              onClick={() => {
+                setOpen(false);
+                it.run();
+              }}
+            >
+              {it.label}
+            </button>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -220,6 +325,12 @@ function suggestPassword() {
 }
 
 function PasswordField({ value, onChange, id }: { value: string; onChange: (v: string) => void; id: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
   return (
     <div className="flex gap-2">
       <input
@@ -234,6 +345,14 @@ function PasswordField({ value, onChange, id }: { value: string; onChange: (v: s
         onChange={(e) => onChange(e.target.value)}
       />
       <button type="button" className="ws-btn" onClick={() => onChange(suggestPassword())}>Generate</button>
+      <button
+        type="button"
+        className="ws-btn"
+        disabled={!value}
+        onClick={() => navigator.clipboard?.writeText(value).then(() => setCopied(true), () => {})}
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
     </div>
   );
 }
