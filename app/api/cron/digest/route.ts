@@ -10,8 +10,11 @@ import { isAdminConfigured, supabaseAdmin } from "@/lib/workspace/supabase-admin
  * not work.: the proxy passes /api/* through untouched.
  *
  * Each person who wants it gets one email: what's overdue, due today, has no
- * deadline, is due in the next week, and — for board owners — what's waiting
- * for sign-off. Partners also see every deadline that moved yesterday.
+ * deadline, is due in the next week; for board owners, what's waiting for
+ * their sign-off (oldest first, with how long); for assignees, their finished
+ * work still waiting on someone else's; and any of their deadlines moved
+ * yesterday. Partners also get every move, and the overdue or undated work
+ * nobody is assigned to — otherwise no one is ever told about it.
  * Nothing to say, no email. Resend's idempotency key makes a retried run safe.
  */
 export async function GET(request: NextRequest) {
@@ -40,7 +43,7 @@ export async function GET(request: NextRequest) {
   const boardName = new Map(boards.map((b) => [b.id, b.name]));
   const { data: tasks, error: taskError } = await db
     .from("tasks")
-    .select("id, title, status, due_date, assignee_id, board_id")
+    .select("id, title, status, due_date, assignee_id, board_id, updated_at")
     .in("board_id", boards.map((b) => b.id))
     .neq("status", "done");
   if (taskError) return NextResponse.json({ error: taskError.message }, { status: 500 });
@@ -61,6 +64,31 @@ export async function GET(request: NextRequest) {
     .map((m) => ({ ...m, task: Array.isArray(m.task) ? m.task[0] : m.task }))
     .filter((m) => m.task && boardName.has(m.task.board_id));
 
+  // When each Quality Check task got there, from the activity trail, so
+  // sign-off rows can say how long they've waited. Falls back to updated_at.
+  const inQc = (tasks ?? []).filter((t) => t.status === "quality_check");
+  const qcSince = new Map<string, string>();
+  if (inQc.length) {
+    const { data: qcEvents } = await db
+      .from("task_events")
+      .select("task_id, created_at")
+      .eq("field", "status")
+      .eq("to_value", "quality_check")
+      .in("task_id", inQc.map((t) => t.id))
+      .order("created_at");
+    (qcEvents ?? []).forEach((e) => qcSince.set(e.task_id, e.created_at)); // latest wins
+  }
+  const ownerOf = new Map(boards.map((b) => [b.id, b.owner_id as string | null]));
+  const nameOf = new Map(people.map((x) => [x.id, x.full_name || x.email]));
+  const waitedDays = (t: { id: string; updated_at: string }) =>
+    Math.max(0, Math.floor((Date.now() - Date.parse(qcSince.get(t.id) ?? t.updated_at)) / 86_400_000));
+  const waited = (t: { id: string; updated_at: string }) => {
+    const d = waitedDays(t);
+    return d === 0 ? "since today" : `waiting ${d} day${d === 1 ? "" : "s"}`;
+  };
+  const oldestFirst = (a: { id: string; updated_at: string }, b: { id: string; updated_at: string }) => waitedDays(b) - waitedDays(a);
+  const unassigned = (tasks ?? []).filter((t) => !t.assignee_id && (!t.due_date || t.due_date < today)).sort(byDue);
+
   let sent = 0;
   for (const person of people) {
     const mine = (tasks ?? []).filter((t) => t.assignee_id === person.id);
@@ -74,23 +102,44 @@ export async function GET(request: NextRequest) {
     const dueToday = mine.filter((t) => t.due_date === today);
     const soon = mine.filter((t) => t.due_date && t.due_date > today && t.due_date <= weekOut).sort(byDue);
     const owned = new Set(boards.filter((b) => b.owner_id === person.id).map((b) => b.id));
-    const signOff = (tasks ?? []).filter((t) => t.status === "quality_check" && owned.has(t.board_id) && t.assignee_id !== person.id);
-    const undated = mine.filter((t) => !t.due_date);
-    const slips = person.role === "partner" ? moved : [];
+    const signOff = inQc.filter((t) => owned.has(t.board_id) && t.assignee_id !== person.id).sort(oldestFirst);
+    // Your finished work that's still waiting on the board owner.
+    const awaitingOthers = mine.filter((t) => t.status === "quality_check" && ownerOf.get(t.board_id) !== person.id).sort(oldestFirst);
+    const undated = mine.filter((t) => !t.due_date && t.status !== "quality_check");
+    const mineIds = new Set(mine.map((t) => t.id));
+    const slips = person.role === "partner" ? moved : moved.filter((m) => mineIds.has(m.task_id));
+    const orphans = person.role === "partner" ? unassigned : [];
 
-    if (!overdue.length && !dueToday.length && !signOff.length && !undated.length && !slips.length) continue;
+    if (!overdue.length && !dueToday.length && !signOff.length && !awaitingOthers.length && !undated.length && !slips.length && !orphans.length) continue;
 
     const blocks: Block[] = [];
     if (overdue.length) blocks.push({ kind: "list", title: `Overdue (${overdue.length})`, items: overdue.map((t) => item(t, `was due ${pretty(t.due_date!)}`, true)) });
     if (dueToday.length) blocks.push({ kind: "list", title: `Due today (${dueToday.length})`, items: dueToday.map((t) => item(t, "due today")) });
-    if (signOff.length) blocks.push({ kind: "list", title: `Waiting for your sign-off (${signOff.length})`, items: signOff.map((t) => item(t, "in Quality check")) });
+    if (signOff.length)
+      blocks.push({ kind: "list", title: `Waiting for your sign-off (${signOff.length})`, items: signOff.map((t) => item(t, `in Quality check · ${waited(t)}`, waitedDays(t) >= 3)) });
+    if (awaitingOthers.length)
+      blocks.push({
+        kind: "list",
+        title: `Your finished work, waiting for sign-off (${awaitingOthers.length})`,
+        items: awaitingOthers.map((t) => {
+          const owner = ownerOf.get(t.board_id);
+          const who = owner ? `${nameOf.get(owner) ?? "a former member"} signs off` : "board has no owner — ask a partner";
+          return item(t, `${who} · ${waited(t)}`, !owner || waitedDays(t) >= 3);
+        }),
+      });
     if (undated.length)
       blocks.push({ kind: "list", title: `No deadline (${undated.length}) — it can never be late, so nobody is told to chase it`, items: undated.map((t) => item(t, "no due date")) });
     if (soon.length) blocks.push({ kind: "list", title: "Coming up this week", items: soon.slice(0, 6).map((t) => item(t, `due ${pretty(t.due_date!)}`)) });
+    if (orphans.length)
+      blocks.push({
+        kind: "list",
+        title: `Nobody's on these (${orphans.length}) — overdue or undated, and unassigned`,
+        items: orphans.map((t) => item(t, t.due_date ? `was due ${pretty(t.due_date)}` : "no due date", !!t.due_date)),
+      });
     if (slips.length)
       blocks.push({
         kind: "list",
-        title: `Deadlines moved yesterday (${slips.length})`,
+        title: person.role === "partner" ? `Deadlines moved yesterday (${slips.length})` : `Your deadlines moved yesterday (${slips.length})`,
         items: slips.map((m) => {
           const slip = m.to_value ? Math.round((Date.parse(m.to_value) - Date.parse(m.from_value)) / 86_400_000) : null;
           const to = m.to_value ? `${pretty(m.to_value)} (${slip! > 0 ? "+" : ""}${slip}d)` : "removed";
@@ -109,8 +158,10 @@ export async function GET(request: NextRequest) {
         overdue.length && `${overdue.length} overdue`,
         dueToday.length && `${dueToday.length} due today`,
         signOff.length && `${signOff.length} to sign off`,
+        awaitingOthers.length && `${awaitingOthers.length} awaiting sign-off`,
         undated.length && `${undated.length} with no deadline`,
         slips.length && `${slips.length} deadline${slips.length === 1 ? "" : "s"} moved`,
+        orphans.length && `${orphans.length} unassigned`,
       ]
         .filter(Boolean)
         .join(", ") || "nothing urgent";

@@ -281,7 +281,7 @@ export default function GanttView({
                             <span
                               key={edge}
                               aria-hidden
-                              className={`absolute inset-y-0 w-2 cursor-ew-resize bg-ink/20 opacity-0 group-hover:opacity-100 ${edge === "start" ? "left-0" : "right-0"}`}
+                              className={`absolute inset-y-0 w-2 cursor-ew-resize bg-ink/20 opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${edge === "start" ? "left-0" : "right-0"}`}
                               onPointerDown={(e) => startDrag(e, t, edge)}
                               onPointerMove={moveDrag}
                               onPointerUp={() => endDrag(t)}
