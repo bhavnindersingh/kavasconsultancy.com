@@ -58,7 +58,8 @@ const MIN_DAYS: Record<Zoom, number> = { day: 28, week: 84, month: 365 };
  * today line is never off-screen and an empty board still shows where now is.
  * It starts on a Monday (day, week) or the 1st (month) so columns line up.
  */
-export function buildWindow(tasks: Dated[], today: number, zoom: Zoom) {
+/** `fill` is the fewest days to show, so a short plan still spans the screen. */
+export function buildWindow(tasks: Dated[], today: number, zoom: Zoom, fill = 0) {
   let lo = today;
   let hi = today;
   for (const t of tasks) {
@@ -70,7 +71,7 @@ export function buildWindow(tasks: Dated[], today: number, zoom: Zoom) {
   lo -= PAD[zoom];
   hi += PAD[zoom];
   const start = zoom === "month" ? firstOfMonth(lo) : mondayOf(lo);
-  const end = Math.max(hi, start + MIN_DAYS[zoom] - 1);
+  const end = Math.max(hi, start + Math.max(MIN_DAYS[zoom], fill) - 1);
   return { start, end, days: end - start + 1 };
 }
 

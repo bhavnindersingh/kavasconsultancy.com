@@ -233,7 +233,7 @@ export default function BoardView({
           <section
             key={status}
             data-tk-column={status}
-            className={`flex min-w-[196px] max-w-[300px] flex-1 basis-[260px] flex-col rounded-2xl p-2 transition-colors ${target ? "bg-cream" : "bg-[#efedea]"}`}
+            className={`flex min-w-[196px] flex-1 basis-[260px] flex-col rounded-2xl p-2 transition-colors ${target ? "bg-cream" : "bg-[#efedea]"}`}
             aria-label={STATUS_LABEL[status]}
           >
             <h2 className={`sticky top-0 z-10 flex items-center gap-2 rounded-xl px-2 py-1.5 text-sm font-medium ${target ? "bg-cream" : "bg-[#efedea]"}`}>

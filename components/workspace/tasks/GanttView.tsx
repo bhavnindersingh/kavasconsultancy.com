@@ -43,6 +43,17 @@ export default function GanttView({
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
+  const [frameW, setFrameW] = useState(0);
+
+  // The width there is to fill, so a short plan still spans a wide screen.
+  useEffect(() => {
+    const el = frame.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setFrameW(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const ppd = PX_PER_DAY[zoom];
   const todayDay = toDay(today());
@@ -58,7 +69,8 @@ export default function GanttView({
     };
   }, [tasks]);
 
-  const win = useMemo(() => buildWindow(scheduled, todayDay, zoom), [scheduled, todayDay, zoom]);
+  const fillDays = Math.floor((frameW - NAME_W - 2) / ppd);
+  const win = useMemo(() => buildWindow(scheduled, todayDay, zoom, fillDays), [scheduled, todayDay, zoom, fillDays]);
   const header = useMemo(() => headerRows(win, zoom), [win, zoom]);
   // From the committed rows, never the drag preview.
   const chain = useMemo(() => longestChain(scheduled, deps), [scheduled, deps]);
@@ -126,7 +138,7 @@ export default function GanttView({
   });
 
   return (
-    <div>
+    <div ref={frame}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-full border border-line bg-card p-0.5" role="group" aria-label="Zoom">
           {(["day", "week", "month"] as Zoom[]).map((z) => (

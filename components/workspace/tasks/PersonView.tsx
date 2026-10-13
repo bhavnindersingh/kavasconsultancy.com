@@ -44,9 +44,11 @@ export default function PersonView({
   const groups = BUCKETS.map((b) => ({ ...b, rows: open.filter((t) => b.test(daysUntilDue(t))) })).filter((g) => g.rows.length);
 
   return (
-    <div className="max-w-4xl">
+    // Full width; on very wide screens the sections flow into two columns so
+    // a row's title and due date don't end up a monitor apart.
+    <div className="grid items-start gap-x-8 min-[1680px]:grid-cols-2">
       {awaiting.length > 0 && (
-        <section className="mb-6">
+        <section className="mb-6 min-w-0">
           <h3 className="mb-2 text-sm font-medium">
             Awaiting your sign-off <span className="font-normal text-mute">{awaiting.length}</span>
             <span className="font-normal text-mute"> · Finished work on boards you own. Open it and move it to Done.</span>
@@ -55,7 +57,7 @@ export default function PersonView({
         </section>
       )}
       {groups.map((g) => (
-        <section key={g.key} className="mb-6">
+        <section key={g.key} className="mb-6 min-w-0">
           <h3 className="mb-2 text-sm font-medium" style={g.key === "overdue" ? { color: LATE } : undefined}>
             {g.title} <span className="font-normal text-mute">{g.rows.length}</span>
             {g.note && <span className="font-normal text-mute"> · {g.note}</span>}
@@ -64,7 +66,7 @@ export default function PersonView({
         </section>
       ))}
       {done.length > 0 && (
-        <section className="mb-6">
+        <section className="mb-6 min-w-0">
           <h3 className="mb-2 text-sm font-medium">
             Done <span className="font-normal text-mute">{done.length}</span>
           </h3>
