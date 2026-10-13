@@ -9,6 +9,7 @@ import {
   ENTRY_CATEGORIES,
   GST_RATES,
   GSTIN_PATTERN,
+  isIncome,
   PAYMENT_METHODS,
   PER_PERSON,
   type AccountCategory,
@@ -114,6 +115,8 @@ export default function EntryDialog({
   const set = (k: string, v: string | boolean) => setD((cur) => ({ ...cur, [k]: v }));
   const category = d.category as AccountCategory;
   const perPerson = PER_PERSON.includes(category);
+  // Invoicing is money in from a client; everything else is money out.
+  const income = isIncome(category);
   // Every expense is the consultancy's; only a salary names a person (anyone
   // on the team). A retired "personal" entry keeps its partner.
   const owners = category === "salary" ? people : partners;
@@ -169,8 +172,9 @@ export default function EntryDialog({
       bank_narration: blank("bank_narration"),
       gst_applicable: Boolean(d.gst_applicable),
       vendor_gstin: d.gst_applicable ? gstin || null : null,
-      invoice_no: d.gst_applicable ? blank("invoice_no") : null,
-      invoice_date: d.gst_applicable ? blank("invoice_date") : null,
+      // An invoice to a client keeps its number and date with or without GST.
+      invoice_no: d.gst_applicable || income ? blank("invoice_no") : null,
+      invoice_date: d.gst_applicable || income ? blank("invoice_date") : null,
       gst_rate: d.gst_applicable ? num("gst_rate") : null,
       taxable_value: d.gst_applicable ? num("taxable_value") : null,
       gst_amount: d.gst_applicable ? num("gst_amount") : null,
@@ -269,13 +273,16 @@ export default function EntryDialog({
               />
             </div>
           </div>
-          {field("description", "What was it for?", { required: true, placeholder: category === "salary" ? "e.g. Salary — October" : "e.g. Office internet, October" })}
+          {field("description", "What was it for?", {
+            required: true,
+            placeholder: income ? "e.g. Website build — milestone 2" : category === "salary" ? "e.g. Salary — October" : "e.g. Office internet, October",
+          })}
         </div>
 
         <Choice
           label="Category"
           value={category}
-          options={[...ENTRY_CATEGORIES, ...(entry && !ENTRY_CATEGORIES.includes(entry.category) ? [entry.category] : [])].map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))}
+          options={[...ENTRY_CATEGORIES, ...(entry && !ENTRY_CATEGORIES.includes(entry.category) ? [entry.category] : [])].map((c) => ({ value: c, label: isIncome(c) ? `${CATEGORY_LABEL[c]} · money in` : CATEGORY_LABEL[c] }))}
           onChange={(v) =>
             setD((cur) => {
               // Keep whose only if they still fit: anyone for a salary, a partner otherwise.
@@ -285,7 +292,15 @@ export default function EntryDialog({
           }
         />
 
-        {!perPerson && field("party", "Paid to", { placeholder: "Vendor, shop or service", autoComplete: "off" })}
+        {income ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_12rem_12rem]">
+            {field("party", "Client", { required: true, placeholder: "Who the invoice is to", autoComplete: "off" })}
+            {field("invoice_no", "Invoice no.", { autoComplete: "off" })}
+            {field("invoice_date", "Invoice date", { type: "date" })}
+          </div>
+        ) : (
+          !perPerson && field("party", "Paid to", { placeholder: "Vendor, shop or service", autoComplete: "off" })
+        )}
         {perPerson && (
           <Choice
             label={category === "salary" ? "Paid to" : "Whose"}
@@ -300,9 +315,9 @@ export default function EntryDialog({
         )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
-          {field("entry_date", "Date paid", { type: "date", required: true })}
+          {field("entry_date", income ? "Date received" : "Date paid", { type: "date", required: true })}
           <Choice
-            label="Paid by"
+            label={income ? "Received by" : "Paid by"}
             value={str(d.payment_method)}
             options={PAYMENT_METHODS.map((m) => ({ value: m, label: m }))}
             onChange={(v) => set("payment_method", d.payment_method === v ? "" : v)}
@@ -312,7 +327,7 @@ export default function EntryDialog({
         <section>
           <div className="flex flex-wrap items-center gap-2">
             <input ref={fileInput} type="file" multiple accept={ACCEPT} className="hidden" onChange={(e) => pick(e.target.files)} />
-            <button type="button" className="ws-btn" onClick={() => fileInput.current?.click()}>Attach receipt</button>
+            <button type="button" className="ws-btn" onClick={() => fileInput.current?.click()}>{income ? "Attach invoice" : "Attach receipt"}</button>
             <span className="text-xs text-mute">Image or PDF, up to 10 MB</span>
           </div>
           {(files.length > 0 || pendingFiles.length > 0) && (
@@ -351,7 +366,7 @@ export default function EntryDialog({
               <div>
                 <p className="mb-2 text-sm font-medium">Bank transfer <span className="font-normal text-mute">— what the statement shows</span></p>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {field("paid_from", "Paid from", { placeholder: "e.g. HDFC current a/c" })}
+                  {field("paid_from", income ? "Received into" : "Paid from", { placeholder: "e.g. HDFC current a/c" })}
                   {field("reference_no", "Reference / UTR")}
                   {field("payee_account", "Payee account / UPI ID")}
                   {field("bank_narration", "Bank narration")}
@@ -365,9 +380,10 @@ export default function EntryDialog({
                 </label>
                 {d.gst_applicable && (
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-3">
-                    {field("vendor_gstin", "Vendor GSTIN", { maxLength: 15, className: "ws-input uppercase" })}
-                    {field("invoice_no", "Invoice no.")}
-                    {field("invoice_date", "Invoice date", { type: "date" })}
+                    {field("vendor_gstin", income ? "Client GSTIN" : "Vendor GSTIN", { maxLength: 15, className: "ws-input uppercase" })}
+                    {/* An invoice's number and date are already on the main form. */}
+                    {!income && field("invoice_no", "Invoice no.")}
+                    {!income && field("invoice_date", "Invoice date", { type: "date" })}
                     <div>
                       <label className="ws-label" htmlFor="e-gst_rate">GST rate %</label>
                       <select id="e-gst_rate" className="ws-input" value={str(d.gst_rate)} onChange={(e) => set("gst_rate", e.target.value)}>

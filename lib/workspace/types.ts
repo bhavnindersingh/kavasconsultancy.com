@@ -111,13 +111,15 @@ export type CompanyDocument = StoredFile & { folder_id: string; description: str
 
 // ── Accounts ───────────────────────────────────────────────────────────────
 
-export const ACCOUNT_CATEGORIES = ["salary", "purchase", "marketing", "company", "personal"] as const;
+export const ACCOUNT_CATEGORIES = ["invoice", "salary", "purchase", "marketing", "subscription", "company", "personal"] as const;
 export type AccountCategory = (typeof ACCOUNT_CATEGORIES)[number];
 
 export const CATEGORY_LABEL: Record<AccountCategory, string> = {
+  invoice: "Invoicing",
   salary: "Salaries",
   purchase: "Purchases",
   marketing: "Marketing",
+  subscription: "Subscriptions",
   company: "Company",
   personal: "Personal",
 };
@@ -132,6 +134,10 @@ export const PER_PERSON: AccountCategory[] = ["salary", "personal"];
  */
 export const RETIRED_CATEGORIES: AccountCategory[] = ["personal"];
 export const ENTRY_CATEGORIES = ACCOUNT_CATEGORIES.filter((c) => !RETIRED_CATEGORIES.includes(c));
+
+/** Money in: what Kavas invoices its clients. Every other category is spending. */
+export const INCOME_CATEGORIES: AccountCategory[] = ["invoice"];
+export const isIncome = (c: AccountCategory) => INCOME_CATEGORIES.includes(c);
 
 export const CURRENCIES = ["INR", "USD"] as const;
 export type Currency = (typeof CURRENCIES)[number];

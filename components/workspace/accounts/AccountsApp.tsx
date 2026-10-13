@@ -6,6 +6,7 @@ import {
   ACCOUNT_CATEGORIES,
   CATEGORY_LABEL,
   RETIRED_CATEGORIES,
+  isIncome,
   type AccountCategory,
   type AccountEntry,
   type Currency,
@@ -106,6 +107,19 @@ export default function AccountsApp() {
       .map((x) => money(x.v, x.cur))
       .join(" + ") || "—";
 
+  /** Money in and out of a set of entries, for subtotals: "+₹50,000 in · ₹12,000 out". */
+  const flowOf = (list: AccountEntry[]) => {
+    const inn = list.filter((e) => isIncome(e.category));
+    const out = list.filter((e) => !isIncome(e.category));
+    return (
+      <>
+        {inn.length > 0 && <span className="text-[#067647]">+{sumOf(inn)} in</span>}
+        {inn.length > 0 && out.length > 0 && <span className="text-mute"> · </span>}
+        {out.length > 0 && <span>{sumOf(out)} out</span>}
+      </>
+    );
+  };
+
   // Month subheads with subtotals once the table spans more than one month
   // (and is in date order, where they make sense).
   const months = useMemo(() => {
@@ -137,6 +151,17 @@ export default function AccountsApp() {
     () => ACCOUNT_CATEGORIES.filter((c) => !RETIRED_CATEGORIES.includes(c) || entries.some((e) => e.category === c) || trend.some((e) => e.category === c)),
     [entries, trend],
   );
+  const spendCategories = categories.filter((c) => !isIncome(c));
+
+  // In, out and the difference for the period, per currency.
+  const flow = (["INR", "USD"] as Currency[])
+    .map((cur) => {
+      const of = inPeriod.filter((e) => e.currency === cur);
+      const inn = of.filter((e) => isIncome(e.category)).reduce((a, e) => a + Number(e.amount), 0);
+      const out = of.filter((e) => !isIncome(e.category)).reduce((a, e) => a + Number(e.amount), 0);
+      return { cur, inn, out, net: inn - out };
+    })
+    .filter((f) => f.cur === "INR" || f.inn || f.out);
 
   const trendRows = useMemo(() => {
     const months = Array.from({ length: TREND_MONTHS }, (_, i) => monthKey(today(), i - (TREND_MONTHS - 1)));
@@ -144,18 +169,22 @@ export default function AccountsApp() {
       const ofMonth = trend.filter((e) => e.entry_date.startsWith(m) && (!owner || e.owner_id === owner));
       return {
         month: m,
-        cells: categories.map((c) => {
+        cells: spendCategories.map((c) => {
           const inr = ofMonth.filter((e) => e.category === c && e.currency === "INR").reduce((a, e) => a + Number(e.amount), 0);
           const usd = ofMonth.filter((e) => e.category === c && e.currency === "USD").reduce((a, e) => a + Number(e.amount), 0);
           return { inr, usd };
         }),
+        invoiced: (["INR", "USD"] as Currency[]).map((cur) =>
+          ofMonth.filter((e) => isIncome(e.category) && e.currency === cur).reduce((a, e) => a + Number(e.amount), 0),
+        ),
       };
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- spendCategories derives from categories
   }, [trend, owner, categories]);
 
   function exportCsv() {
     const head = [
-      "Date", "Category", "Paid to (person)", "Salary month", "Party", "Description", "Amount", "Currency", "Payment method",
+      "Date", "Category", "In / out", "Paid to (person)", "Salary month", "Party", "Description", "Amount", "Currency", "Payment method",
       "Paid from", "Reference", "Payee account", "Bank narration", "GST", "Vendor GSTIN", "Invoice no", "Invoice date",
       "GST rate", "Taxable value", "GST amount", "Notes", "Receipts",
     ];
@@ -165,7 +194,7 @@ export default function AccountsApp() {
     };
     const lines = rows.map((e) =>
       [
-        e.entry_date, CATEGORY_LABEL[e.category], e.owner_id ? nameOf(e.owner_id) : "Kavas Consultancy", e.salary_month?.slice(0, 7), e.party,
+        e.entry_date, CATEGORY_LABEL[e.category], isIncome(e.category) ? "In" : "Out", e.owner_id ? nameOf(e.owner_id) : "Kavas Consultancy", e.salary_month?.slice(0, 7), e.party,
         e.description, e.amount, e.currency, e.payment_method, e.paid_from, e.reference_no, e.payee_account, e.bank_narration,
         e.gst_applicable ? "Yes" : "No", e.vendor_gstin, e.invoice_no, e.invoice_date, e.gst_rate, e.taxable_value, e.gst_amount,
         e.notes, e.account_files?.length ?? 0,
@@ -184,7 +213,7 @@ export default function AccountsApp() {
       <header className="flex flex-wrap items-end justify-between gap-3 mb-6">
         <div>
           <h1 className="font-serif text-3xl">Accounts</h1>
-          <p className="text-sm text-mute mt-1">Kavas Consultancy’s salaries, purchases and running costs.</p>
+          <p className="text-sm text-mute mt-1">Kavas Consultancy’s money in from clients, and money out on salaries and running costs.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="ws-btn" onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
@@ -235,9 +264,36 @@ export default function AccountsApp() {
         )}
       </div>
 
-      {/* Summary */}
-      <div className={`grid grid-cols-2 gap-3 mb-4 ${categories.length > 4 ? "sm:grid-cols-3 lg:grid-cols-5" : "lg:grid-cols-4"}`}>
-        {categories.map((c) => {
+      {/* In, out, net */}
+      <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <button
+          onClick={() => setCategory((cur) => (cur === "invoice" ? "" : "invoice"))}
+          className={`rounded-2xl border p-4 text-left transition-colors ${category === "invoice" ? "border-[#067647] bg-[#f6fef9]" : "border-line bg-[#f6fef9] hover:border-[#abefc6]"}`}
+        >
+          <span className="block text-sm text-[#067647]">Money in · invoiced</span>
+          {flow.map((f) => (
+            <span key={f.cur} className={`block tabular-nums ${f.cur === "INR" ? "font-serif text-2xl mt-1" : "text-sm"}`}>{money(f.inn, f.cur)}</span>
+          ))}
+        </button>
+        <div className="rounded-2xl border border-line bg-card p-4">
+          <span className="block text-sm text-mute">Money out · spent</span>
+          {flow.map((f) => (
+            <span key={f.cur} className={`block tabular-nums ${f.cur === "INR" ? "font-serif text-2xl mt-1" : "text-sm"}`}>{money(f.out, f.cur)}</span>
+          ))}
+        </div>
+        <div className="rounded-2xl border border-line bg-card p-4">
+          <span className="block text-sm text-mute">Net · in minus out</span>
+          {flow.map((f) => (
+            <span key={f.cur} className={`block tabular-nums ${f.cur === "INR" ? "font-serif text-2xl mt-1" : "text-sm"} ${f.net < 0 ? "text-[#b42318]" : f.net > 0 ? "text-[#067647]" : ""}`}>
+              {f.net > 0 ? "+" : ""}{money(f.net, f.cur)}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Spending by category */}
+      <div className={`grid grid-cols-2 gap-3 mb-4 ${spendCategories.length > 5 ? "sm:grid-cols-3 lg:grid-cols-6" : spendCategories.length > 4 ? "sm:grid-cols-3 lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+        {spendCategories.map((c) => {
           const inr = totals.get(`${c}|INR`) ?? 0;
           const usd = totals.get(`${c}|USD`) ?? 0;
           return (
@@ -254,10 +310,8 @@ export default function AccountsApp() {
         })}
       </div>
 
-      <p className="mb-4 px-1 text-sm">
-        <span className="text-mute">Total for the period: </span>
-        <span className="font-medium tabular-nums">{sumOf(inPeriod)}</span>
-        <span className="text-mute"> · {inPeriod.length} entr{inPeriod.length === 1 ? "y" : "ies"}</span>
+      <p className="mb-4 px-1 text-sm text-mute">
+        {inPeriod.length} entr{inPeriod.length === 1 ? "y" : "ies"} in this period
       </p>
 
       {salaries.length > 0 && (
@@ -281,7 +335,7 @@ export default function AccountsApp() {
               </th>
               <th className="font-normal px-4 py-2.5">Category</th>
               <th className="font-normal px-4 py-2.5">Description</th>
-              <th className="font-normal px-4 py-2.5">Paid to</th>
+              <th className="font-normal px-4 py-2.5">Paid to / by</th>
               <th className="font-normal px-4 py-2.5">Method</th>
               <th className="font-normal px-4 py-2.5 text-right" aria-sort={sort.key === "amount" ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
                 <SortButton label="Amount" on={sort.key === "amount"} dir={sort.dir} onClick={() => setSort((s) => ({ key: "amount", dir: s.key === "amount" ? (s.dir === 1 ? -1 : 1) : -1 }))} />
@@ -294,7 +348,7 @@ export default function AccountsApp() {
                 {months && (i === 0 || rows[i - 1].entry_date.slice(0, 7) !== e.entry_date.slice(0, 7)) && (
                   <tr className="border-b border-line bg-paper">
                     <th colSpan={5} scope="rowgroup" className="px-4 py-2 text-left font-medium">{monthLabel(e.entry_date.slice(0, 7))}</th>
-                    <td className="px-4 py-2 text-right text-xs text-mute tabular-nums whitespace-nowrap">{sumOf(months.get(e.entry_date.slice(0, 7)) ?? [])}</td>
+                    <td className="px-4 py-2 text-right text-xs tabular-nums whitespace-nowrap">{flowOf(months.get(e.entry_date.slice(0, 7)) ?? [])}</td>
                   </tr>
                 )}
                 <tr onClick={() => setEditing(e)} onKeyDown={(ev) => ev.key === "Enter" && setEditing(e)} tabIndex={0} className="border-b border-line last:border-0 cursor-pointer hover:bg-paper focus-visible:bg-paper focus-visible:outline-none align-top">
@@ -306,14 +360,17 @@ export default function AccountsApp() {
                   <td className="px-4 py-2.5 min-w-56">
                     {e.description}
                     <span className="block text-xs text-mute">
-                      {[e.owner_id && e.party, e.reference_no && `Ref ${e.reference_no}`, e.gst_applicable && "GST", e.account_files?.length && `${e.account_files.length} receipt${e.account_files.length > 1 ? "s" : ""}`]
+                      {[e.owner_id && e.party, isIncome(e.category) && e.invoice_no && `Invoice ${e.invoice_no}`, e.reference_no && `Ref ${e.reference_no}`, e.gst_applicable && "GST", e.account_files?.length && `${e.account_files.length} receipt${e.account_files.length > 1 ? "s" : ""}`]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 whitespace-nowrap">{e.owner_id ? nameOf(e.owner_id) : e.party ?? <span className="text-mute">—</span>}</td>
                   <td className="px-4 py-2.5 whitespace-nowrap">{e.payment_method ?? <span className="text-mute">—</span>}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap">{money(Number(e.amount), e.currency)}</td>
+                  <td className={`px-4 py-2.5 text-right tabular-nums whitespace-nowrap ${isIncome(e.category) ? "text-[#067647]" : ""}`}>
+                    {isIncome(e.category) ? "+" : ""}
+                    {money(Number(e.amount), e.currency)}
+                  </td>
                 </tr>
               </Fragment>
             ))}
@@ -341,7 +398,7 @@ export default function AccountsApp() {
             <tfoot>
               <tr className="border-t border-line">
                 <td colSpan={5} className="px-4 py-2.5 text-mute">{rows.length} entries shown</td>
-                <td className="px-4 py-2.5 text-right font-medium tabular-nums whitespace-nowrap">{sumOf(rows)}</td>
+                <td className="px-4 py-2.5 text-right font-medium tabular-nums whitespace-nowrap">{flowOf(rows)}</td>
               </tr>
             </tfoot>
           )}
@@ -355,8 +412,10 @@ export default function AccountsApp() {
           <thead className="text-left text-mute">
             <tr className="border-b border-line">
               <th className="font-normal px-4 py-2.5">Month</th>
-              {categories.map((c) => <th key={c} className="font-normal px-4 py-2.5 text-right">{CATEGORY_LABEL[c]}</th>)}
-              <th className="font-normal px-4 py-2.5 text-right">Total</th>
+              {spendCategories.map((c) => <th key={c} className="font-normal px-4 py-2.5 text-right">{CATEGORY_LABEL[c]}</th>)}
+              <th className="font-normal px-4 py-2.5 text-right">Spent</th>
+              <th className="font-normal px-4 py-2.5 text-right">Invoiced</th>
+              <th className="font-normal px-4 py-2.5 text-right">Net</th>
             </tr>
           </thead>
           <tbody>
@@ -387,6 +446,26 @@ export default function AccountsApp() {
                       <>
                         {inr > 0 && money(inr, "INR")}
                         {usd > 0 && <span className="block text-xs font-normal">{money(usd, "USD")}</span>}
+                      </>
+                    ) : (
+                      <span className="font-normal text-ghost">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums whitespace-nowrap text-[#067647]">
+                    {r.invoiced[0] || r.invoiced[1] ? (
+                      <>
+                        {r.invoiced[0] > 0 && money(r.invoiced[0], "INR")}
+                        {r.invoiced[1] > 0 && <span className="block text-xs">{money(r.invoiced[1], "USD")}</span>}
+                      </>
+                    ) : (
+                      <span className="text-ghost">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-medium tabular-nums whitespace-nowrap">
+                    {inr || usd || r.invoiced[0] || r.invoiced[1] ? (
+                      <>
+                        <Signed v={r.invoiced[0] - inr} cur="INR" />
+                        {(usd > 0 || r.invoiced[1] > 0) && <span className="block text-xs"><Signed v={r.invoiced[1] - usd} cur="USD" /></span>}
                       </>
                     ) : (
                       <span className="font-normal text-ghost">—</span>
@@ -431,4 +510,9 @@ function SortButton({ label, on, dir, onClick }: { label: string; on: boolean; d
       <span className="text-[10px]">{on ? (dir === 1 ? "▲" : "▼") : ""}</span>
     </button>
   );
+}
+
+/** An amount with its sign and colour: green above zero, red below. */
+function Signed({ v, cur }: { v: number; cur: Currency }) {
+  return <span className={v < 0 ? "text-[#b42318]" : v > 0 ? "text-[#067647]" : ""}>{v > 0 ? "+" : ""}{money(v, cur)}</span>;
 }
