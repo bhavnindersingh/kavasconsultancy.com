@@ -5,6 +5,7 @@ import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
 import {
   ACCOUNT_CATEGORIES,
   CATEGORY_LABEL,
+  OFFERED_PAYER_ENTITIES,
   RETIRED_CATEGORIES,
   isIncome,
   type AccountCategory,
@@ -15,9 +16,11 @@ import { useWorkspace } from "../WorkspaceContext";
 import { formatDate, today } from "../tasks/bits";
 import EntryDialog from "./EntryDialog";
 import SalaryDialog from "./SalaryDialog";
-import { money, monthKey, monthLabel, periodRange, type Period } from "./ledger";
+import { entityKey, money, monthKey, monthLabel, payerKey, payerLabel, periodRange, type Period } from "./ledger";
 
 const TREND_MONTHS = 6;
+/** Payer filter value for entries that don't say who paid. */
+const NO_PAYER = "none";
 
 export default function AccountsApp() {
   const { people, nameOf } = useWorkspace();
@@ -29,6 +32,8 @@ export default function AccountsApp() {
   const [to, setTo] = useState(() => periodRange("this_month").to);
   const [category, setCategory] = useState<AccountCategory | "">("");
   const [owner, setOwner] = useState<string>("");
+  // A payer key (see ledger.ts), or NO_PAYER for entries that don't say.
+  const [payer, setPayer] = useState<string>("");
   const [search, setSearch] = useState("");
   const [gstOnly, setGstOnly] = useState(false);
 
@@ -84,17 +89,21 @@ export default function AccountsApp() {
 
   const rows = useMemo(() => {
     const kept = inPeriod.filter(
-      (e) => (!category || e.category === category) && (!owner || e.owner_id === owner),
+      (e) =>
+        (!category || e.category === category) &&
+        (!owner || e.owner_id === owner) &&
+        (!payer || payerKey(e) === (payer === NO_PAYER ? "" : payer)),
     );
     // The query returns newest first; only re-sort when asked to.
     if (sort.key === "date") return sort.dir === -1 ? kept : [...kept].reverse();
     return [...kept].sort((a, b) => (Number(a.amount) - Number(b.amount)) * sort.dir);
-  }, [inPeriod, category, owner, sort]);
+  }, [inPeriod, category, owner, payer, sort]);
 
-  const filtered = !!(category || owner || search.trim() || gstOnly);
+  const filtered = !!(category || owner || payer || search.trim() || gstOnly);
   function clearFilters() {
     setCategory("");
     setOwner("");
+    setPayer("");
     setSearch("");
     setGstOnly(false);
   }
@@ -188,7 +197,7 @@ export default function AccountsApp() {
 
   function exportCsv() {
     const head = [
-      "Date", "Category", "In / out", "Paid to (person)", "Salary month", "Party", "Description", "Amount", "Currency", "Payment method",
+      "Date", "Category", "In / out", "Paid to (person)", "Salary month", "Party", "Description", "Amount", "Currency", "Paid / received by", "Payment method",
       "Paid from", "Reference", "Payee account", "Bank narration", "GST", "Vendor GSTIN", "Invoice no", "Invoice date",
       "GST rate", "Taxable value", "GST amount", "Notes", "Receipts",
     ];
@@ -199,7 +208,7 @@ export default function AccountsApp() {
     const lines = rows.map((e) =>
       [
         e.entry_date, CATEGORY_LABEL[e.category], isIncome(e.category) ? "In" : "Out", e.owner_id ? nameOf(e.owner_id) : "Kavas Consultancy", e.salary_month?.slice(0, 7), e.party,
-        e.description, e.amount, e.currency, e.payment_method, e.paid_from, e.reference_no, e.payee_account, e.bank_narration,
+        e.description, e.amount, e.currency, payerLabel(payerKey(e), nameOf), e.payment_method, e.paid_from, e.reference_no, e.payee_account, e.bank_narration,
         e.gst_applicable ? "Yes" : "No", e.vendor_gstin, e.invoice_no, e.invoice_date, e.gst_rate, e.taxable_value, e.gst_amount,
         e.notes, e.account_files?.length ?? 0,
       ].map(cell).join(","),
@@ -252,6 +261,12 @@ export default function AccountsApp() {
           <option value="">All categories</option>
           {categories.map((c) => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
         </select>
+        <select className="ws-input !w-auto" value={payer} onChange={(e) => setPayer(e.target.value)} aria-label="Paid by">
+          <option value="">Paid by anyone</option>
+          {partners.map((p) => <option key={p.id} value={p.id}>Paid by {p.full_name || p.email}</option>)}
+          {OFFERED_PAYER_ENTITIES.map((k) => <option key={k} value={entityKey(k)}>Paid by {payerLabel(entityKey(k), nameOf)}</option>)}
+          <option value={NO_PAYER}>Payer not recorded</option>
+        </select>
         <select className="ws-input !w-auto" value={owner} onChange={(e) => setOwner(e.target.value)} aria-label="Salaries of">
           <option value="">Anyone’s pay</option>
           {/* Only a salary names a person, so this narrows to their salaries. */}
@@ -294,6 +309,8 @@ export default function AccountsApp() {
           ))}
         </div>
       </div>
+
+      <WhoPaid entries={entries} partners={partners} nameOf={nameOf} onPick={setPayer} />
 
       {/* Spending by category */}
       {cardHeads.length === 0 && !loading && <p className="mb-4 px-1 text-sm text-mute">No spending in this period yet.</p>}
@@ -341,7 +358,7 @@ export default function AccountsApp() {
               <th className="font-normal px-4 py-2.5">Category</th>
               <th className="font-normal px-4 py-2.5">Description</th>
               <th className="font-normal px-4 py-2.5">Paid to / by</th>
-              <th className="font-normal px-4 py-2.5">Method</th>
+              <th className="font-normal px-4 py-2.5">Paid / received by</th>
               <th className="font-normal px-4 py-2.5 text-right" aria-sort={sort.key === "amount" ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
                 <SortButton label="Amount" on={sort.key === "amount"} dir={sort.dir} onClick={() => setSort((s) => ({ key: "amount", dir: s.key === "amount" ? (s.dir === 1 ? -1 : 1) : -1 }))} />
               </th>
@@ -371,7 +388,10 @@ export default function AccountsApp() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5 whitespace-nowrap">{e.owner_id ? nameOf(e.owner_id) : e.party ?? <span className="text-mute">—</span>}</td>
-                  <td className="px-4 py-2.5 whitespace-nowrap">{e.payment_method ?? <span className="text-mute">—</span>}</td>
+                  <td className="px-4 py-2.5 whitespace-nowrap">
+                    {payerKey(e) ? payerLabel(payerKey(e), nameOf) : <span className="text-[#b54708]">Not recorded</span>}
+                    {e.payment_method && <span className="block text-xs text-mute">{e.payment_method}</span>}
+                  </td>
                   <td className={`px-4 py-2.5 text-right tabular-nums whitespace-nowrap ${isIncome(e.category) ? "text-[#067647]" : ""}`}>
                     {isIncome(e.category) ? "+" : ""}
                     {money(Number(e.amount), e.currency)}
@@ -520,4 +540,86 @@ function SortButton({ label, on, dir, onClick }: { label: string; on: boolean; d
 /** An amount with its sign and colour: green above zero, red below. */
 function Signed({ v, cur }: { v: number; cur: Currency }) {
   return <span className={v < 0 ? "text-[#b42318]" : v > 0 ? "text-[#067647]" : ""}>{v > 0 ? "+" : ""}{money(v, cur)}</span>;
+}
+
+/**
+ * Who has put in what over the period, and the equal-shares settlement
+ * between the partners. A partner's contribution is what they paid out less
+ * what clients paid into their account; the partners' contributions are
+ * evened out in thirds (or however many partners there are). Kavas Capital's
+ * spending is shown on its own: the firm owes it back, so it isn't anyone's
+ * share.
+ */
+function WhoPaid({
+  entries,
+  partners,
+  nameOf,
+  onPick,
+}: {
+  entries: AccountEntry[];
+  partners: { id: string; full_name: string | null; email: string }[];
+  nameOf: (id: string | null) => string;
+  onPick: (payer: string) => void;
+}) {
+  const curs = (["INR", "USD"] as Currency[]).filter((cur) => cur === "INR" || entries.some((e) => e.currency === cur));
+  const flowFor = (key: string, cur: Currency) => {
+    const of = entries.filter((e) => e.currency === cur && payerKey(e) === key);
+    const out = of.filter((e) => !isIncome(e.category)).reduce((a, e) => a + Number(e.amount), 0);
+    const inn = of.filter((e) => isIncome(e.category)).reduce((a, e) => a + Number(e.amount), 0);
+    return { out, inn, put: out - inn };
+  };
+  const unrecorded = entries.filter((e) => !payerKey(e)).length;
+  if (!partners.length || !entries.length) return null;
+
+  const rows = curs.map((cur) => {
+    const each = partners.map((p) => ({ p, ...flowFor(p.id, cur) }));
+    const share = each.reduce((a, x) => a + x.put, 0) / partners.length;
+    return { cur, each: each.map((x) => ({ ...x, balance: x.put - share })), share, capital: flowFor(entityKey("kavas_capital"), cur) };
+  });
+
+  return (
+    <section className="mb-6 rounded-2xl border border-line bg-card p-4">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-medium">Who’s paid what</h2>
+        <p className="text-xs text-mute">Equal partners: what each of you puts in is evened out in {partners.length === 3 ? "thirds" : "equal shares"}.</p>
+      </div>
+      {rows.map(({ cur, each, share, capital }) => (
+        <div key={cur} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 [&+&]:mt-4">
+          {curs.length > 1 && <p className="col-span-full text-xs font-medium text-mute">In {cur}</p>}
+          {each.map(({ p, out, inn, balance }) => {
+            const settled = Math.abs(balance) < 1;
+            return (
+              <button key={p.id} onClick={() => onPick(p.id)} className="rounded-xl border border-line p-3 text-left hover:border-ghost">
+                <span className="block font-medium">{p.full_name || p.email}</span>
+                <span className="block text-sm tabular-nums">Paid {money(out, cur)}</span>
+                {inn > 0 && <span className="block text-sm tabular-nums text-[#067647]">Received {money(inn, cur)}</span>}
+                <span className={`mt-1 block text-sm font-medium tabular-nums ${settled ? "text-mute" : balance > 0 ? "text-[#067647]" : "text-[#b42318]"}`}>
+                  {settled ? "Even" : balance > 0 ? `Is owed ${money(balance, cur)}` : `Owes ${money(-balance, cur)}`}
+                </span>
+              </button>
+            );
+          })}
+          <button onClick={() => onPick(entityKey("kavas_capital"))} className="rounded-xl border border-line bg-paper p-3 text-left hover:border-ghost">
+            <span className="block font-medium">{payerLabel(entityKey("kavas_capital"), nameOf)}</span>
+            <span className="block text-sm tabular-nums">Paid {money(capital.out, cur)}</span>
+            {capital.inn > 0 && <span className="block text-sm tabular-nums text-[#067647]">Received {money(capital.inn, cur)}</span>}
+            <span className="mt-1 block text-sm text-mute">
+              {capital.put > 0 ? `The firm owes it ${money(capital.put, cur)}` : capital.put < 0 ? `It holds ${money(-capital.put, cur)} of the firm’s` : "Nothing between them"}
+            </span>
+          </button>
+          {share !== 0 && (
+            <p className="col-span-full text-xs text-mute">
+              Each partner’s share of what the partners put in: {money(share, cur)}.
+            </p>
+          )}
+        </div>
+      ))}
+      {unrecorded > 0 && (
+        <p className="mt-3 text-sm text-[#b54708]">
+          {unrecorded} entr{unrecorded === 1 ? "y doesn’t" : "ies don’t"} say who paid, so {unrecorded === 1 ? "it isn’t" : "they aren’t"} counted here.{" "}
+          <button className="underline underline-offset-2" onClick={() => onPick(NO_PAYER)}>Show {unrecorded === 1 ? "it" : "them"}</button>
+        </p>
+      )}
+    </section>
+  );
 }

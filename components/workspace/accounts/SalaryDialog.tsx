@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
-import type { AccountEntry, Currency, Profile } from "@/lib/workspace/types";
+import { OFFERED_PAYER_ENTITIES, PAYER_ENTITY_LABEL, type AccountEntry, type Currency, type Profile } from "@/lib/workspace/types";
 import Modal from "../Modal";
 import { today } from "../tasks/bits";
-import { money, monthKey, monthLabel } from "./ledger";
+import { entityKey, money, monthKey, monthLabel, payerColumns, payerKey } from "./ledger";
 
-type Last = Pick<AccountEntry, "owner_id" | "amount" | "currency" | "payment_method" | "paid_from" | "payee_account" | "party">;
+type Last = Pick<AccountEntry, "owner_id" | "amount" | "currency" | "payment_method" | "paid_from" | "payee_account" | "party" | "paid_by_id" | "paid_by_entity">;
 type Paid = Pick<AccountEntry, "id" | "owner_id" | "amount" | "currency" | "entry_date">;
 
 /**
@@ -25,6 +25,12 @@ export default function SalaryDialog({ people, onClose, onSaved }: { people: Pro
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Who's paying this month's salaries; starts from whoever paid the last one.
+  const [payer, setPayer] = useState("");
+  const payers = [
+    ...people.filter((p) => p.role === "partner").map((p) => ({ value: p.id, label: p.full_name || p.email })),
+    ...OFFERED_PAYER_ENTITIES.map((k) => ({ value: entityKey(k), label: PAYER_ENTITY_LABEL[k] })),
+  ];
   // Partners first, then members, each by name.
   const team = [...people].sort((a, b) => (a.role === b.role ? 0 : a.role === "partner" ? -1 : 1));
 
@@ -33,7 +39,7 @@ export default function SalaryDialog({ people, onClose, onSaved }: { people: Pro
     const [l, p] = await Promise.all([
       supabase
         .from("account_entries")
-        .select("owner_id, amount, currency, payment_method, paid_from, payee_account, party, salary_month, entry_date")
+        .select("owner_id, amount, currency, payment_method, paid_from, payee_account, party, paid_by_id, paid_by_entity, salary_month, entry_date")
         .eq("category", "salary")
         .in("owner_id", ids)
         .order("salary_month", { ascending: false })
@@ -50,6 +56,8 @@ export default function SalaryDialog({ people, onClose, onSaved }: { people: Pro
     const byOwner: Record<string, Last> = {};
     for (const r of (l.data ?? []) as Last[]) if (r.owner_id && !byOwner[r.owner_id]) byOwner[r.owner_id] = r;
     setLast(byOwner);
+    const latest = (l.data ?? [])[0] as Last | undefined;
+    if (latest) setPayer((cur) => cur || payerKey(latest));
     setPaid((p.data ?? []) as Paid[]);
     setAmounts(Object.fromEntries(ids.map((id) => [id, byOwner[id] ? String(byOwner[id].amount) : ""])));
   }, [supabase, people, month]);
@@ -72,10 +80,12 @@ export default function SalaryDialog({ people, onClose, onSaved }: { people: Pro
       payment_method: l?.payment_method ?? "Bank transfer",
       paid_from: l?.paid_from ?? null,
       payee_account: l?.payee_account ?? null,
+      ...payerColumns(payer),
     };
   };
 
   async function record(p: Profile) {
+    if (!payer) return setError("Pick who is paying the salaries.");
     if (!Number(amounts[p.id])) return setError(`Enter ${p.full_name || p.email}’s amount first.`);
     setError(null);
     const { error } = await supabase.from("account_entries").insert({ ...rowFor(p), amount: Number(amounts[p.id]) });
@@ -87,6 +97,7 @@ export default function SalaryDialog({ people, onClose, onSaved }: { people: Pro
   const unpaid = team.filter((p) => Number(amounts[p.id]) > 0 && !paid.some((x) => x.owner_id === p.id));
   async function recordAll() {
     if (!unpaid.length) return;
+    if (!payer) return setError("Pick who is paying the salaries.");
     setBusy(true);
     setError(null);
     const { error } = await supabase.from("account_entries").insert(unpaid.map((p) => ({ ...rowFor(p), amount: Number(amounts[p.id]) })));
@@ -102,6 +113,13 @@ export default function SalaryDialog({ people, onClose, onSaved }: { people: Pro
         <div>
           <label className="ws-label" htmlFor="s-month">Salary for</label>
           <input id="s-month" type="month" className="ws-input" value={month} onChange={(e) => setMonth(e.target.value)} />
+        </div>
+        <div>
+          <label className="ws-label" htmlFor="s-payer">Paid by</label>
+          <select id="s-payer" className="ws-input" value={payer} onChange={(e) => setPayer(e.target.value)}>
+            <option value="">Pick who is paying…</option>
+            {payers.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
         </div>
         {team.map((p) => {
           const done = paid.filter((x) => x.owner_id === p.id);

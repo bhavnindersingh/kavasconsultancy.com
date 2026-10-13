@@ -10,6 +10,8 @@ import {
   ENTRY_CATEGORIES,
   GST_RATES,
   GSTIN_PATTERN,
+  OFFERED_PAYER_ENTITIES,
+  PAYER_ENTITY_LABEL,
   isIncome,
   PAYMENT_METHODS,
   PER_PERSON,
@@ -23,7 +25,7 @@ import ConfirmButton from "../ConfirmButton";
 import Modal from "../Modal";
 import { useWorkspace } from "../WorkspaceContext";
 import { today } from "../tasks/bits";
-import { splitGst } from "./ledger";
+import { entityKey, payerColumns, payerKey, payerLabel, splitGst } from "./ledger";
 
 const ACCEPT = ".jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.pdf";
 const ACCEPT_EXT = ACCEPT.split(",").map((e) => e.slice(1));
@@ -42,6 +44,7 @@ function lastUsed(): Partial<Draft> {
     return {
       ...(ENTRY_CATEGORIES.includes(v.category) ? { category: v.category } : {}),
       ...(PAYMENT_METHODS.includes(v.payment_method) ? { payment_method: v.payment_method } : {}),
+      ...(typeof v.payer === "string" ? { payer: v.payer } : {}),
     };
   } catch {
     return {};
@@ -49,7 +52,7 @@ function lastUsed(): Partial<Draft> {
 }
 function remember(d: Draft) {
   try {
-    localStorage.setItem(LAST_KEY, JSON.stringify({ category: d.category, payment_method: d.payment_method }));
+    localStorage.setItem(LAST_KEY, JSON.stringify({ category: d.category, payment_method: d.payment_method, payer: d.payer }));
   } catch {}
 }
 
@@ -58,6 +61,7 @@ function toDraft(e: AccountEntry | null, defaults?: Partial<Draft>): Draft {
     entry_date: e?.entry_date ?? today(),
     category: e?.category ?? "office",
     owner_id: e?.owner_id ?? "",
+    payer: e ? payerKey(e) : "",
     salary_month: e?.salary_month?.slice(0, 7) ?? "",
     party: str(e?.party),
     description: str(e?.description),
@@ -123,6 +127,14 @@ export default function EntryDialog({
   const owners = category === "salary" ? people : partners;
   const ownerId = str(d.owner_id);
   const ownerGone = ownerId && !owners.some((p) => p.id === ownerId);
+  // Who paid: a partner or Kavas Capital. An old payer who's since left (or
+  // a firm no longer offered) stays selectable on the entry that names them.
+  const payer = str(d.payer);
+  const payerOptions = [
+    ...partners.map((p) => ({ value: p.id, label: p.full_name || p.email })),
+    ...OFFERED_PAYER_ENTITIES.map((k) => ({ value: entityKey(k), label: PAYER_ENTITY_LABEL[k] })),
+  ];
+  if (payer && !payerOptions.some((o) => o.value === payer)) payerOptions.push({ value: payer, label: payerLabel(payer, nameOf) });
 
   function fillGst() {
     const amount = Number(d.amount);
@@ -150,6 +162,7 @@ export default function EntryDialog({
     const another = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "another";
     setError(null);
     setSavedNote(null);
+    if (!payer) return setError(income ? "Pick who received the money." : "Pick who paid.");
     if (perPerson && !d.owner_id) return setError(category === "salary" ? "Pick who the salary is for." : "A personal expense belongs to one partner — pick whose.");
     const gstin = str(d.vendor_gstin).trim().toUpperCase();
     if (d.gst_applicable && gstin && !GSTIN_PATTERN.test(gstin)) return setError("That GSTIN doesn't look right (15 characters, e.g. 27AAPFU0939F1ZV).");
@@ -160,6 +173,7 @@ export default function EntryDialog({
       entry_date: d.entry_date,
       category,
       owner_id: perPerson ? d.owner_id || null : null,
+      ...payerColumns(payer),
       salary_month: category === "salary" && d.salary_month ? `${d.salary_month}-01` : null,
       party: blank("party"),
       description: str(d.description).trim(),
@@ -204,7 +218,7 @@ export default function EntryDialog({
       if (another) {
         // Keep the date, category, whose and method; clear what's specific.
         setSavedNote(`Saved “${row.description}”. Next one:`);
-        setD((cur) => ({ ...toDraft(null), entry_date: cur.entry_date, category: cur.category, owner_id: cur.owner_id, payment_method: cur.payment_method, currency: cur.currency }));
+        setD((cur) => ({ ...toDraft(null), entry_date: cur.entry_date, category: cur.category, owner_id: cur.owner_id, payer: cur.payer, payment_method: cur.payment_method, currency: cur.currency }));
         setFiles([]);
         savedId.current = null;
         setSaving(false);
@@ -316,10 +330,18 @@ export default function EntryDialog({
           />
         )}
 
+        <Choice
+          label={income ? "Who received it" : "Who paid"}
+          value={payer}
+          hint={income ? "Whose account the client paid into" : "Whose money paid for it. What partners pay is evened out in equal shares."}
+          options={payerOptions}
+          onChange={(v) => set("payer", v)}
+        />
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
           {field("entry_date", income ? "Date received" : "Date paid", { type: "date", required: true })}
           <Choice
-            label={income ? "Received by" : "Paid by"}
+            label="How"
             value={str(d.payment_method)}
             options={PAYMENT_METHODS.map((m) => ({ value: m, label: m }))}
             onChange={(v) => set("payment_method", d.payment_method === v ? "" : v)}

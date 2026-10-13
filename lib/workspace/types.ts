@@ -179,6 +179,15 @@ export const PAYMENT_METHODS = ["Bank transfer", "UPI", "Card", "Cash", "Cheque"
 export const GST_RATES = ["0", "5", "12", "18", "28"];
 export const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
+/** Payers that aren't people. */
+export const PAYER_ENTITY_LABEL = {
+  kavas_capital: "Kavas Capital",
+  kavas_consultancy: "Kavas Consultancy account",
+} as const;
+export type PayerEntity = keyof typeof PAYER_ENTITY_LABEL;
+/** The firms offered as payers today; the firm's own account is allowed but not offered yet. */
+export const OFFERED_PAYER_ENTITIES: PayerEntity[] = ["kavas_capital"];
+
 export type AccountEntry = {
   id: string;
   entry_date: string;
@@ -189,6 +198,10 @@ export type AccountEntry = {
   currency: Currency;
   payment_method: string | null;
   owner_id: string | null;
+  /** Who paid it (or, for an invoice, received it): a partner… */
+  paid_by_id: string | null;
+  /** …or a firm. At most one of the two is set; both null on old entries. */
+  paid_by_entity: PayerEntity | null;
   salary_month: string | null;
   notes: string | null;
   paid_from: string | null;

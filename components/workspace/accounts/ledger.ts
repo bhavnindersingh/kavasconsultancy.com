@@ -1,4 +1,4 @@
-import type { Currency } from "@/lib/workspace/types";
+import { PAYER_ENTITY_LABEL, type AccountEntry, type Currency, type PayerEntity } from "@/lib/workspace/types";
 import { today } from "../tasks/bits";
 
 export type Period = "this_month" | "last_month" | "this_fy" | "last_fy" | "all" | "custom";
@@ -52,4 +52,29 @@ export function periodRange(p: Period): { from: string; to: string } {
 export function splitGst(amount: number, rate: number) {
   const taxable = Math.round((amount / (1 + rate / 100)) * 100) / 100;
   return { taxable, gst: Math.round((amount - taxable) * 100) / 100 };
+}
+
+// ── Who paid ───────────────────────────────────────────────────────────────
+// One string per payer for pickers and filters: a profile id, or
+// "entity:<key>" for a firm.
+
+const ENTITY = "entity:";
+
+export function payerKey(e: Pick<AccountEntry, "paid_by_id" | "paid_by_entity">) {
+  return e.paid_by_id ?? (e.paid_by_entity ? `${ENTITY}${e.paid_by_entity}` : "");
+}
+
+export const entityKey = (k: PayerEntity) => `${ENTITY}${k}`;
+
+/** The two columns for a payer key ("" = not recorded). */
+export function payerColumns(key: string): { paid_by_id: string | null; paid_by_entity: PayerEntity | null } {
+  if (!key) return { paid_by_id: null, paid_by_entity: null };
+  if (key.startsWith(ENTITY)) return { paid_by_id: null, paid_by_entity: key.slice(ENTITY.length) as PayerEntity };
+  return { paid_by_id: key, paid_by_entity: null };
+}
+
+export function payerLabel(key: string, nameOf: (id: string | null) => string) {
+  if (!key) return "Not recorded";
+  if (key.startsWith(ENTITY)) return PAYER_ENTITY_LABEL[key.slice(ENTITY.length) as PayerEntity] ?? "A firm";
+  return nameOf(key);
 }
