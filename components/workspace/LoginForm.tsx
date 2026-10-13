@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
+import PasswordInput from "./PasswordInput";
 
 export type LoginNotice = "inactive" | "link" | null;
 
@@ -76,7 +77,7 @@ export default function LoginForm({ notice = null }: { notice?: LoginNotice }) {
                 Forgot password?
               </button>
             </div>
-            <input id="password" name="password" type="password" autoComplete="current-password" required className="ws-input mb-6" />
+            <PasswordInput id="password" name="password" autoComplete="current-password" required className="mb-6" />
             {error && <p className="text-sm text-[#b42318] mb-4" role="alert">{error}</p>}
             <button type="submit" disabled={pending} className="ws-btn ws-btn--primary w-full justify-center">
               {pending ? "Signing in…" : "Sign in"}

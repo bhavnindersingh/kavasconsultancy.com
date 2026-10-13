@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
 import { MIN_PASSWORD } from "@/lib/workspace/types";
+import PasswordInput from "./PasswordInput";
 
 export default function ResetPasswordForm({ email, name, welcome }: { email: string; name: string | null; welcome: boolean }) {
   const [next, setNext] = useState("");
@@ -35,9 +36,9 @@ export default function ResetPasswordForm({ email, name, welcome }: { email: str
         </p>
         <input type="email" name="email" autoComplete="username" value={email} readOnly hidden />
         <label className="ws-label" htmlFor="np">New password</label>
-        <input id="np" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD} className="ws-input mb-4" value={next} onChange={(e) => setNext(e.target.value)} />
+        <PasswordInput id="np" autoComplete="new-password" required minLength={MIN_PASSWORD} className="mb-4" value={next} onChange={(e) => setNext(e.target.value)} />
         <label className="ws-label" htmlFor="np2">Again</label>
-        <input id="np2" type="password" autoComplete="new-password" required className="ws-input mb-6" value={again} onChange={(e) => setAgain(e.target.value)} />
+        <PasswordInput id="np2" autoComplete="new-password" required className="mb-6" value={again} onChange={(e) => setAgain(e.target.value)} />
         {error && <p className="text-sm text-[#b42318] mb-4" role="alert">{error}</p>}
         <button type="submit" disabled={pending} className="ws-btn ws-btn--primary w-full justify-center">
           {pending ? "Saving…" : welcome ? "Choose password and start" : "Save and sign in"}

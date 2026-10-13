@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
 import { MIN_PASSWORD } from "@/lib/workspace/types";
+import PasswordInput from "./PasswordInput";
 import { useWorkspace } from "./WorkspaceContext";
 
 export default function AccountSettings() {
@@ -107,15 +108,15 @@ export default function AccountSettings() {
         <h2 className="text-sm font-medium">Change password</h2>
         <div>
           <label className="ws-label" htmlFor="pw-current">Current password</label>
-          <input id="pw-current" className="ws-input" type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
+          <PasswordInput id="pw-current" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
         </div>
         <div>
           <label className="ws-label" htmlFor="pw-next">New password</label>
-          <input id="pw-next" className="ws-input" type="password" autoComplete="new-password" required minLength={MIN_PASSWORD} value={next} onChange={(e) => setNext(e.target.value)} />
+          <PasswordInput id="pw-next" autoComplete="new-password" required minLength={MIN_PASSWORD} value={next} onChange={(e) => setNext(e.target.value)} />
         </div>
         <div>
           <label className="ws-label" htmlFor="pw-again">New password, again</label>
-          <input id="pw-again" className="ws-input" type="password" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} />
+          <PasswordInput id="pw-again" autoComplete="new-password" required value={again} onChange={(e) => setAgain(e.target.value)} />
         </div>
         {pwError && <p className="text-sm text-[#b42318]" role="alert">{pwError}</p>}
         {pwDone && <p className="text-sm text-[#067647]" role="status">Password changed. Use the new one next time you sign in.</p>}
