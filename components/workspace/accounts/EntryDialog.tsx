@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { errorText, formatBytes, objectKey, openObject, removeObjects, uploadObject } from "@/lib/workspace/files";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
 import {
@@ -20,12 +20,14 @@ import {
   type AccountFile,
   type Currency,
   type Profile,
+  type Project,
 } from "@/lib/workspace/types";
 import ConfirmButton from "../ConfirmButton";
 import Modal from "../Modal";
 import { useWorkspace } from "../WorkspaceContext";
 import { today } from "../tasks/bits";
-import { entityKey, payerColumns, payerKey, payerLabel, splitGst } from "./ledger";
+import { projectSummary } from "./books";
+import { entityKey, money, payerColumns, payerKey, payerLabel, splitGst } from "./ledger";
 
 const ACCEPT = ".jpg,.jpeg,.png,.webp,.heic,.heif,.gif,.pdf";
 const ACCEPT_EXT = ACCEPT.split(",").map((e) => e.slice(1));
@@ -61,6 +63,7 @@ function toDraft(e: AccountEntry | null, defaults?: Partial<Draft>): Draft {
     entry_date: e?.entry_date ?? today(),
     category: e?.category ?? "office",
     owner_id: e?.owner_id ?? "",
+    project_id: e?.project_id ?? "",
     payer: e ? payerKey(e) : "",
     salary_month: e?.salary_month?.slice(0, 7) ?? "",
     party: str(e?.party),
@@ -87,12 +90,15 @@ function toDraft(e: AccountEntry | null, defaults?: Partial<Draft>): Draft {
 export default function EntryDialog({
   entry,
   partners,
+  projects = [],
   defaults,
   onClose,
   onSaved,
 }: {
   entry: AccountEntry | null;
   partners: Profile[];
+  /** With their fee rules, to suggest a partner's project fee. */
+  projects?: Project[];
   defaults?: Partial<Draft>;
   onClose: () => void;
   /** `another`: the dialog stays open for the next entry. */
@@ -122,15 +128,53 @@ export default function EntryDialog({
   const perPerson = PER_PERSON.includes(category);
   // Invoicing is money in from a client; everything else is money out.
   const income = isIncome(category);
-  // Every expense is the consultancy's; only a salary names a person (anyone
-  // on the team). A retired "personal" entry keeps its partner.
-  const owners = category === "salary" ? people : partners;
+  // A partner's project fee: owed to them, so no payer and no "how".
+  const fee = category === "partner_fee";
+  const firmPartners = people.filter((p) => p.is_firm_partner);
+  // Every expense is the consultancy's; only a salary (anyone on the team) or
+  // a project fee (a partner in the firm) names a person. A retired
+  // "personal" entry keeps its partner.
+  const owners = category === "salary" ? people : fee ? firmPartners : partners;
   const ownerId = str(d.owner_id);
   const ownerGone = ownerId && !owners.some((p) => p.id === ownerId);
   // Who paid: a partner or Kavas Capital. An old payer who's since left (or
   // a firm no longer offered) stays selectable on the entry that names them.
   const payer = str(d.payer);
-  const firmPartners = people.filter((p) => p.is_firm_partner);
+  const projectId = str(d.project_id);
+  const project = projects.find((x) => x.id === projectId);
+  // Projects on offer: the active ones, plus the entry's own if it's closed.
+  const projectOptions = projects.filter((x) => x.is_active || x.id === projectId);
+
+  // The fee still due to this partner on this project, under its rule.
+  const rule = fee ? project?.project_partner_fees?.find((r) => r.partner_id === ownerId) : undefined;
+  const ruleKey = rule && project ? `${project.id}:${rule.partner_id}:${rule.mode}:${rule.value}` : "";
+  const [fetched, setFetched] = useState<{ key: string; amount: number; why: string } | null>(null);
+  // Only shown while it still matches the chosen project and partner.
+  const suggestion = fetched && fetched.key === ruleKey ? fetched : null;
+  useEffect(() => {
+    if (!rule || !project) return;
+    let cancelled = false;
+    supabase
+      .from("account_entries")
+      .select("id, category, amount, currency, owner_id, project_id")
+      .eq("project_id", project.id)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const others = ((data ?? []) as AccountEntry[]).filter((x) => x.id !== entry?.id);
+        const sum = projectSummary(others, project.id, [{ partner_id: rule.partner_id, mode: rule.mode, value: Number(rule.value) }]);
+        const f = sum.fees[0];
+        const basis = rule.mode === "fixed" ? `a fixed ${money(Number(rule.value), "INR")}` : `${Number(rule.value)}% of ${money(sum.income, "INR")} invoiced`;
+        setFetched({
+          key: ruleKey,
+          amount: Math.max(0, f.outstanding),
+          why: `${basis}${f.recorded ? `, less ${money(f.recorded, "INR")} already recorded` : ""}`,
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ruleKey stands for rule and project
+  }, [ruleKey, supabase, entry?.id]);
   const payerOptions = [
     ...firmPartners.map((p) => ({ value: p.id, label: p.full_name || p.email })),
     ...OFFERED_PAYER_ENTITIES.map((k) => ({ value: entityKey(k), label: PAYER_ENTITY_LABEL[k] })),
@@ -163,8 +207,10 @@ export default function EntryDialog({
     const another = (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "another";
     setError(null);
     setSavedNote(null);
-    if (!payer) return setError(income ? "Pick who received the money." : "Pick who paid.");
-    if (perPerson && !d.owner_id) return setError(category === "salary" ? "Pick who the salary is for." : "A personal expense belongs to one partner — pick whose.");
+    if (!fee && !payer) return setError(income ? "Pick who received the money." : "Pick who paid.");
+    if (fee && !projectId) return setError("Pick the project the fee is for.");
+    if (perPerson && !d.owner_id)
+      return setError(category === "salary" ? "Pick who the salary is for." : fee ? "Pick the partner the fee is for." : "A personal expense belongs to one partner — pick whose.");
     const gstin = str(d.vendor_gstin).trim().toUpperCase();
     if (d.gst_applicable && gstin && !GSTIN_PATTERN.test(gstin)) return setError("That GSTIN doesn't look right (15 characters, e.g. 27AAPFU0939F1ZV).");
 
@@ -174,13 +220,14 @@ export default function EntryDialog({
       entry_date: d.entry_date,
       category,
       owner_id: perPerson ? d.owner_id || null : null,
-      ...payerColumns(payer),
+      ...payerColumns(fee ? "" : payer),
+      project_id: projectId || null,
       salary_month: category === "salary" && d.salary_month ? `${d.salary_month}-01` : null,
       party: blank("party"),
       description: str(d.description).trim(),
       amount: Number(d.amount),
       currency: d.currency as Currency,
-      payment_method: blank("payment_method"),
+      payment_method: fee ? null : blank("payment_method"),
       notes: blank("notes"),
       paid_from: blank("paid_from"),
       reference_no: blank("reference_no"),
@@ -219,7 +266,7 @@ export default function EntryDialog({
       if (another) {
         // Keep the date, category, whose and method; clear what's specific.
         setSavedNote(`Saved “${row.description}”. Next one:`);
-        setD((cur) => ({ ...toDraft(null), entry_date: cur.entry_date, category: cur.category, owner_id: cur.owner_id, payer: cur.payer, payment_method: cur.payment_method, currency: cur.currency }));
+        setD((cur) => ({ ...toDraft(null), entry_date: cur.entry_date, category: cur.category, owner_id: cur.owner_id, project_id: cur.project_id, payer: cur.payer, payment_method: cur.payment_method, currency: cur.currency }));
         setFiles([]);
         savedId.current = null;
         setSaving(false);
@@ -291,7 +338,13 @@ export default function EntryDialog({
           </div>
           {field("description", "What was it for?", {
             required: true,
-            placeholder: income ? "e.g. Website build — milestone 2" : category === "salary" ? "e.g. Salary — October" : "e.g. Office internet, October",
+            placeholder: income
+              ? "e.g. Website build — milestone 2"
+              : fee
+                ? "e.g. Project lead fee"
+                : category === "salary"
+                  ? "e.g. Salary — October"
+                  : "e.g. Office internet, October",
           })}
         </div>
 
@@ -303,7 +356,8 @@ export default function EntryDialog({
           onChange={(v) =>
             setD((cur) => {
               // Keep whose only if they still fit: anyone for a salary, a partner otherwise.
-              const fits = PER_PERSON.includes(v as AccountCategory) && (v === "salary" ? people : partners).some((p) => p.id === cur.owner_id);
+              const pool = v === "salary" ? people : v === "partner_fee" ? firmPartners : partners;
+              const fits = PER_PERSON.includes(v as AccountCategory) && pool.some((p) => p.id === cur.owner_id);
               return { ...cur, category: v, owner_id: fits ? cur.owner_id : "" };
             })
           }
@@ -318,9 +372,25 @@ export default function EntryDialog({
         ) : (
           !perPerson && field("party", "Paid to", { placeholder: "Vendor, shop or service", autoComplete: "off" })
         )}
+        {(projectOptions.length > 0 || fee) && (
+          <div>
+            <label className="ws-label" htmlFor="e-project">{fee ? "Project" : "Project (optional)"}</label>
+            <select id="e-project" className="ws-input" value={projectId} onChange={(e) => set("project_id", e.target.value)}>
+              <option value="">{fee ? "Pick a project…" : "Not for a project"}</option>
+              {projectOptions.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                  {x.client ? ` — ${x.client}` : ""}
+                  {x.is_active ? "" : " (closed)"}
+                </option>
+              ))}
+            </select>
+            {fee && !projectOptions.length && <p className="mt-1 text-xs text-mute">Add the project under Accounts → Projects first.</p>}
+          </div>
+        )}
         {perPerson && (
           <Choice
-            label={category === "salary" ? "Paid to" : "Whose"}
+            label={category === "salary" ? "Paid to" : fee ? "Partner" : "Whose"}
             value={ownerId}
             options={[
               ...owners.map((p) => ({ value: p.id, label: p.full_name || p.email })),
@@ -330,7 +400,19 @@ export default function EntryDialog({
             onChange={(v) => set("owner_id", v)}
           />
         )}
+        {fee && suggestion && (
+          <p className="rounded-lg bg-paper px-3 py-2 text-sm">
+            Due under the project’s rule: <span className="font-medium tabular-nums">{money(suggestion.amount, "INR")}</span>{" "}
+            <span className="text-mute">({suggestion.why})</span>{" "}
+            {suggestion.amount > 0 && Number(d.amount) !== suggestion.amount && (
+              <button type="button" className="underline underline-offset-2" onClick={() => set("amount", String(suggestion.amount))}>
+                Use this
+              </button>
+            )}
+          </p>
+        )}
 
+        {!fee && (
         <Choice
           label={income ? "Who received it" : "Who paid"}
           value={payer}
@@ -339,20 +421,23 @@ export default function EntryDialog({
               ? "Nobody is marked as a partner in the firm yet — do that on the Team page (⋯ → Partner in the firm)."
               : income
                 ? "Whose account the client paid into"
-                : "Whose money paid for it. Kavas Capital’s counts equally to its partners; it all evens out in equal shares."
+                : "Whose money paid for it. What Kavas Capital pays is counted to Rahul and Bhavninder equally."
           }
           options={payerOptions}
           onChange={(v) => set("payer", v)}
         />
+        )}
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr] sm:items-end">
-          {field("entry_date", income ? "Date received" : "Date paid", { type: "date", required: true })}
-          <Choice
-            label="How"
-            value={str(d.payment_method)}
-            options={PAYMENT_METHODS.map((m) => ({ value: m, label: m }))}
-            onChange={(v) => set("payment_method", d.payment_method === v ? "" : v)}
-          />
+          {field("entry_date", income ? "Date received" : fee ? "Date" : "Date paid", { type: "date", required: true })}
+          {!fee && (
+            <Choice
+              label="How"
+              value={str(d.payment_method)}
+              options={PAYMENT_METHODS.map((m) => ({ value: m, label: m }))}
+              onChange={(v) => set("payment_method", d.payment_method === v ? "" : v)}
+            />
+          )}
         </div>
 
         <section>

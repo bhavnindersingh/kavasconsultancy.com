@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/workspace/supabase-browser";
-import type { AccountEntry } from "@/lib/workspace/types";
+import type { AccountEntry, Project } from "@/lib/workspace/types";
 import { useWorkspace } from "../WorkspaceContext";
 import { formatDate } from "../tasks/bits";
-import { buildBooks, type Account, type Books } from "./books";
+import { buildBooks, RESERVES, type Account, type Books } from "./books";
 import { money } from "./ledger";
 
 export type BooksTab = "pnl" | "balance" | "trial" | "ledgers";
@@ -23,16 +23,18 @@ export default function BooksView({ tab, from, to, periodLabel }: { tab: BooksTa
   const { people, nameOf } = useWorkspace();
   const supabase = supabaseBrowser();
   const [entries, setEntries] = useState<AccountEntry[] | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let q = supabase.from("account_entries").select("*").order("entry_date");
     if (to) q = q.lte("entry_date", to);
-    q.then(({ data, error }) => {
+    Promise.all([q, supabase.from("projects").select("id, name, client, notes, is_active, created_at")]).then(([list, pr]) => {
       if (cancelled) return;
-      if (error) return setError(error.message);
-      setEntries((data ?? []) as AccountEntry[]);
+      if (list.error || pr.error) return setError((list.error ?? pr.error)!.message);
+      setEntries((list.data ?? []) as AccountEntry[]);
+      setProjects((pr.data ?? []) as Project[]);
     });
     return () => {
       cancelled = true;
@@ -44,8 +46,18 @@ export default function BooksView({ tab, from, to, periodLabel }: { tab: BooksTa
   const inrEntries = useMemo(() => (entries ?? []).filter((e) => e.currency === "INR"), [entries]);
   const otherCurrency = (entries ?? []).length - inrEntries.length;
   const books = useMemo(
-    () => (entries ? buildBooks(inrEntries, { from, to, partners, capitalPartners, nameOfId: nameOf }) : null),
-    [entries, inrEntries, from, to, partners, capitalPartners, nameOf],
+    () =>
+      entries
+        ? buildBooks(inrEntries, {
+            from,
+            to,
+            partners,
+            capitalPartners,
+            nameOfId: nameOf,
+            projectName: (id) => projects.find((x) => x.id === id)?.name ?? "Project",
+          })
+        : null,
+    [entries, inrEntries, from, to, partners, capitalPartners, nameOf, projects],
   );
 
   if (error) return <p className="rounded-lg bg-[#fef3f2] px-3 py-2 text-sm text-[#b42318]">{error}</p>;
@@ -133,7 +145,7 @@ function ProfitAndLoss({
         </div>
       </Sheet>
 
-      <Sheet title="Sharing the profit" sub={`Equal partners · ${partnerNames.length === 3 ? "a third each" : `1/${partnerNames.length || 1} each`}`}>
+      <Sheet title="Where the profit goes" sub="Partners earn through project fees and any salary; the rest stays in the firm">
         <Line label={b.netProfit >= 0 ? "Net profit" : "Net loss"} value={inr(b.netProfit)} />
         {b.remuneration > 0 && (
           <>
@@ -141,12 +153,23 @@ function ProfitAndLoss({
             {[...b.remunerationBy].map(([id, v]) => <Line key={id} indent label={nameOf(id)} value={inr(v)} />)}
           </>
         )}
-        <Line strong label={b.toShare >= 0 ? "Profit to share" : "Loss to share"} value={inr(b.toShare)} tone={b.toShare > 0 ? "good" : b.toShare < 0 ? "bad" : undefined} />
-        <p className="mb-1 mt-3 text-xs font-medium uppercase tracking-wide text-mute">Credited to each partner’s current account</p>
-        {partnerNames.map((p) => {
-          const v = b.share.get(`partner:${p.id}`) ?? 0;
-          return <Line key={p.id} indent label={p.full_name || p.email} value={`${v < 0 ? "−" : ""}${inr(v)}`} />;
-        })}
+        {b.projectFees > 0 && (
+          <>
+            <p className="mb-1 mt-3 text-xs font-medium uppercase tracking-wide text-mute">Less: partners’ project fees</p>
+            {[...b.projectFeesBy].map(([id, v]) => <Line key={id} indent label={nameOf(id)} value={inr(v)} />)}
+          </>
+        )}
+        <div className="mt-3 rounded-xl bg-paper px-3">
+          <Line
+            strong
+            label={b.toReserves >= 0 ? "Kept in Cash reserves" : "Taken from Cash reserves"}
+            value={inr(b.toReserves)}
+            tone={b.toReserves > 0 ? "good" : b.toReserves < 0 ? "bad" : undefined}
+          />
+        </div>
+        <p className="mt-3 text-xs text-mute">
+          {partnerNames.length === 3 ? "The three of you" : "The partners"} own the reserves equally. Cash reserves now: {inr(b.reserves.closing)}.
+        </p>
       </Sheet>
     </div>
   );
@@ -160,18 +183,19 @@ function BalanceSheet({ books, asAt }: { books: Books; asAt: string }) {
   return (
     <Sheet title="Balance sheet" sub={asAt ? `As at ${formatDate(asAt)}` : "As at today"}>
       <p className="mb-3 text-sm text-mute">
-        The firm keeps no bank account of its own: partners (and Kavas Capital, on Rahul’s and Bhavninder’s behalf) pay and receive for it. So the
-        balance sheet is the partners’ current accounts, after this period’s profit is shared, and the two sides always match.
+        The firm keeps no bank account of its own: partners (and Kavas Capital, for Rahul and Bhavninder) pay and receive for it, so its money
+        is held by whichever partner received it. That’s the firm’s asset; what it owes partners and its Cash reserves are the other side.
       </p>
       <div className="grid gap-6 md:grid-cols-2">
         <div>
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-mute">Partners’ funds · the firm owes</p>
-          {owed.length ? owed.map((c) => <Line key={c.account.key} indent label={label(c.account)} value={inr(c.balance)} note={c.account.group === "other" ? "Not a partner — sort these out" : undefined} />) : <Line indent label={<span className="text-mute">Nobody</span>} value="—" />}
-          <Line strong label="Total" value={inr(sum(owed))} />
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-mute">Funds and what the firm owes</p>
+          <Line indent label="Cash reserves" value={`${books.reserves.closing < 0 ? "−" : ""}${inr(books.reserves.closing)}`} note="Profit kept by the firm, owned equally" />
+          {owed.map((c) => <Line key={c.account.key} indent label={`Owed to ${label(c.account)}`} value={inr(c.balance)} note={c.account.group === "other" ? "Not a partner — sort these out" : undefined} />)}
+          <Line strong label="Total" value={inr(sum(owed) + books.reserves.closing)} />
         </div>
         <div>
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-mute">Due from partners · they owe the firm</p>
-          {owing.length ? owing.map((c) => <Line key={c.account.key} indent label={label(c.account)} value={inr(c.balance)} note="Holding the firm’s money" />) : <Line indent label={<span className="text-mute">Nobody</span>} value="—" />}
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-mute">Firm’s money, held by</p>
+          {owing.length ? owing.map((c) => <Line key={c.account.key} indent label={label(c.account)} value={inr(c.balance)} note="Received for the firm, not yet passed on" />) : <Line indent label={<span className="text-mute">Nobody</span>} value="—" />}
           <Line strong label="Total" value={inr(sum(owing))} />
         </div>
       </div>
@@ -184,7 +208,6 @@ function BalanceSheet({ books, asAt }: { books: Books; asAt: string }) {
               <th className="py-2 pr-4 font-normal">Account</th>
               <th className="py-2 pr-4 text-right font-normal">Brought forward</th>
               <th className="py-2 pr-4 text-right font-normal">Paid / received</th>
-              <th className="py-2 pr-4 text-right font-normal">Profit share</th>
               <th className="py-2 text-right font-normal">Balance</th>
             </tr>
           </thead>
@@ -194,16 +217,15 @@ function BalanceSheet({ books, asAt }: { books: Books; asAt: string }) {
                 <td className="py-2 pr-4">{label(c.account)}</td>
                 <td className="py-2 pr-4 text-right tabular-nums">{side(c.opening)}</td>
                 <td className="py-2 pr-4 text-right tabular-nums">{side(c.movement)}</td>
-                <td className="py-2 pr-4 text-right tabular-nums">{c.share ? side(-c.share) : "—"}</td>
                 <td className={`py-2 text-right font-medium tabular-nums ${c.balance < -0.005 ? "text-[#067647]" : c.balance > 0.005 ? "text-[#b42318]" : ""}`}>
-                  {Math.abs(c.balance) < 0.005 ? "Even" : c.balance < 0 ? `Owed ${inr(c.balance)}` : `Owes ${inr(c.balance)}`}
+                  {Math.abs(c.balance) < 0.005 ? "Even" : c.balance < 0 ? `Owed ${inr(c.balance)}` : `Holds ${inr(c.balance)}`}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-xs text-mute">Dr = the partner owes the firm; Cr = the firm owes the partner.</p>
+      <p className="mt-2 text-xs text-mute">Dr = the partner holds the firm’s money; Cr = the firm owes the partner.</p>
     </Sheet>
   );
 }
@@ -214,11 +236,12 @@ function TrialBalance({ books, periodLabel }: { books: Books; periodLabel: strin
     { title: "Income", test: (a) => a.group === "income" },
     { title: "Expenses", test: (a) => a.group === "expense" },
     { title: "Appropriation", test: (a) => a.group === "appropriation" },
+    { title: "Reserves", test: (a) => a.group === "reserve" },
     { title: "Other", test: (a) => a.group === "other" },
   ];
   const balanced = Math.abs(books.trialDr - books.trialCr) < 0.01;
   return (
-    <Sheet title="Trial balance" sub={`${periodLabel} · before the profit is shared`}>
+    <Sheet title="Trial balance" sub={`${periodLabel} · before the profit goes to reserves`}>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-left text-mute">
@@ -261,13 +284,13 @@ function TrialBalance({ books, periodLabel }: { books: Books; periodLabel: strin
 }
 
 function Ledgers({ books }: { books: Books }) {
-  const order: Record<string, number> = { partner: 0, income: 1, expense: 2, appropriation: 3, other: 4 };
+  const order: Record<string, number> = { partner: 0, reserve: 1, income: 2, expense: 3, appropriation: 4, other: 5 };
   const accounts = [...books.accounts].sort((a, b) => order[a.group] - order[b.group] || a.name.localeCompare(b.name));
   const [open, setOpen] = useState<string>(accounts[0]?.key ?? "");
   const current = accounts.find((a) => a.key === open) ?? accounts[0];
   if (!current) return <p className="text-mute">No accounts yet.</p>;
   const l = books.ledger(current.key);
-  const balanceSheet = current.group === "partner" || current.group === "other";
+  const balanceSheet = current.group === "partner" || current.group === "other" || current.key === RESERVES;
   return (
     <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
       <nav className="rounded-2xl border border-line bg-card p-2" aria-label="Ledger accounts">

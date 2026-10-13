@@ -128,6 +128,7 @@ export const ACCOUNT_CATEGORIES = [
   "purchase",
   "tax_bank",
   "company",
+  "partner_fee",
   "personal",
 ] as const;
 export type AccountCategory = (typeof ACCOUNT_CATEGORIES)[number];
@@ -143,6 +144,7 @@ export const CATEGORY_LABEL: Record<AccountCategory, string> = {
   purchase: "Equipment & purchases",
   tax_bank: "Taxes & bank charges",
   company: "Other",
+  partner_fee: "Partner fee",
   personal: "Personal",
 };
 
@@ -158,11 +160,12 @@ export const CATEGORY_HINT: Record<AccountCategory, string> = {
   purchase: "Laptops, phones, furniture — things bought once and kept",
   tax_bank: "GST and TDS paid, bank and payment-gateway charges, penalties",
   company: "Anything that doesn’t fit a head above",
+  partner_fee: "What the firm owes a partner for a project, fixed or a % of its fees. Not a bill: no money moves when it’s recorded.",
   personal: "A partner’s personal spending (no longer used)",
 };
 
-/** A salary or a personal expense is always one person's. */
-export const PER_PERSON: AccountCategory[] = ["salary", "personal"];
+/** A salary, a partner's project fee or a personal expense is always one person's. */
+export const PER_PERSON: AccountCategory[] = ["salary", "partner_fee", "personal"];
 
 /**
  * Kavas spends as a company: every expense is the consultancy's, and only a
@@ -175,6 +178,28 @@ export const ENTRY_CATEGORIES = ACCOUNT_CATEGORIES.filter((c) => !RETIRED_CATEGO
 /** Money in: what Kavas invoices its clients. Every other category is spending. */
 export const INCOME_CATEGORIES: AccountCategory[] = ["invoice"];
 export const isIncome = (c: AccountCategory) => INCOME_CATEGORIES.includes(c);
+
+/**
+ * A partner's project fee is owed to them, not paid out to anyone else: no
+ * money moves, so it's neither income nor spending. It comes out of profit
+ * before the rest goes to Cash reserves.
+ */
+export const isPartnerFee = (c: AccountCategory) => c === "partner_fee";
+/** Money actually spent: everything but income and partner fees. */
+export const isSpend = (c: AccountCategory) => !isIncome(c) && !isPartnerFee(c);
+
+export type Project = {
+  id: string;
+  name: string;
+  client: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  project_partner_fees?: ProjectPartnerFee[];
+};
+
+/** A partner's fee on a project: a fixed amount, or a % of what the client pays on it. */
+export type ProjectPartnerFee = { id: string; project_id: string; partner_id: string; mode: "fixed" | "percent"; value: string };
 
 export const CURRENCIES = ["INR", "USD"] as const;
 export type Currency = (typeof CURRENCIES)[number];
@@ -202,6 +227,8 @@ export type AccountEntry = {
   currency: Currency;
   payment_method: string | null;
   owner_id: string | null;
+  /** The project it belongs to, if any. A partner fee always has one. */
+  project_id: string | null;
   /** Who paid it (or, for an invoice, received it): a partner… */
   paid_by_id: string | null;
   /** …or a firm. At most one of the two is set; both null on old entries. */

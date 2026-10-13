@@ -1,26 +1,29 @@
 import { CATEGORY_LABEL, isIncome, PAYER_ENTITY_LABEL, type AccountCategory, type AccountEntry } from "@/lib/workspace/types";
 
 // ── The books ──────────────────────────────────────────────────────────────
-// Kavas Consultancy is a partnership of equal partners with no bank account
-// of its own: every bill is paid, and every client payment received, by a
-// partner or by Kavas Capital (its partners' own firm). So each entry posts
-// in double entry:
+// Kavas Consultancy is a partnership with no bank account of its own: every
+// bill is paid, and every client payment received, by a partner or by Kavas
+// Capital (its partners' own firm). Partners earn through fees on the
+// projects they work on (and any salary); whatever profit is left is kept by
+// the firm as Cash reserves, not shared out. Each entry posts in double entry:
 //
-//   bill paid by a partner      Dr expense head      Cr that partner
-//   bill paid by Kavas Capital  Dr expense head      Cr its partners, equally
-//   client pays a partner       Dr that partner      Cr fees from clients
-//   salary to a firm partner    Dr partners' remuneration (an appropriation
-//                               of profit, not an expense)   Cr payer
+//   bill paid by a partner      Dr expense head            Cr that partner
+//   bill paid by Kavas Capital  Dr expense head            Cr its partners, equally
+//   client pays a partner       Dr that partner            Cr fees from clients
+//   salary to a firm partner    Dr partners' remuneration  Cr payer
+//   partner's project fee       Dr partners' project fees  Cr that partner
+//                               (owed to them; no money moves)
 //   a retired "personal" entry  Dr the partner it was for (drawings)  Cr payer
 //
-// A partner's current account in CREDIT means the firm owes them; in DEBIT,
-// they owe the firm. Profit after remuneration is shared equally and
-// credited to each partner. Entries with no payer post to a suspense account
-// so the books still balance, and are flagged.
+// Remuneration and project fees are appropriations of profit, not expenses.
+// What's left of the period's profit is transferred to Cash reserves.
 //
-// Amounts are as entered (GST-inclusive); everything is in one currency.
+// A partner's current account in CREDIT means the firm owes them; in DEBIT,
+// they hold the firm's money. Entries with no payer post to Suspense so the
+// books still balance, and are flagged. Amounts are as entered
+// (GST-inclusive), in one currency.
 
-export type Group = "income" | "expense" | "appropriation" | "partner" | "other";
+export type Group = "income" | "expense" | "appropriation" | "reserve" | "partner" | "other";
 
 export type Account = { key: string; name: string; group: Group };
 
@@ -37,11 +40,15 @@ type Person = { id: string; full_name: string | null; email: string };
 
 export const FEES = "income:fees";
 export const REMUNERATION = "approp:remuneration";
+export const PROJECT_FEES = "approp:project_fees";
+export const RESERVES = "reserve:cash";
 export const SUSPENSE = "other:suspense";
 const CAPITAL_UNSPLIT = "other:kavas_capital";
 
 const nameOf = (p: Person) => p.full_name || p.email;
 const round = (v: number) => Math.round(v * 100) / 100;
+/** Balance-sheet accounts: carried forward from period to period. */
+const carried = (g: Group) => g === "partner" || g === "other" || g === "reserve";
 
 /** Split `amount` into `n` parts that add back exactly (paise go to the first). */
 function split(amount: number, n: number) {
@@ -53,17 +60,29 @@ function split(amount: number, n: number) {
 
 export function buildBooks(
   entries: AccountEntry[],
-  opts: { from: string; to: string; partners: Person[]; capitalPartners: Person[]; nameOfId: (id: string | null) => string },
+  opts: {
+    from: string;
+    to: string;
+    partners: Person[];
+    capitalPartners: Person[];
+    nameOfId: (id: string | null) => string;
+    projectName?: (id: string | null) => string;
+  },
 ) {
   const { from, partners, capitalPartners, nameOfId } = opts;
+  const projectName = opts.projectName ?? (() => "");
   const accounts = new Map<string, Account>();
   const add = (key: string, name: string, group: Group) => {
     if (!accounts.has(key)) accounts.set(key, { key, name, group });
     return key;
   };
-  const partnerKey = (id: string) => add(`partner:${id}`, `${partners.find((p) => p.id === id) ? nameOf(partners.find((p) => p.id === id)!) : nameOfId(id)} — current account`, "partner");
+  const partnerKey = (id: string) => {
+    const p = partners.find((x) => x.id === id);
+    return add(`partner:${id}`, `${p ? nameOf(p) : nameOfId(id)} — current account`, "partner");
+  };
   partners.forEach((p) => partnerKey(p.id));
   add(FEES, "Fees from clients", "income");
+  add(RESERVES, "Cash reserves", "reserve");
   const firmIds = new Set(partners.map((p) => p.id));
   const capitalSplit = capitalPartners.filter((p) => firmIds.has(p.id));
 
@@ -83,11 +102,19 @@ export function buildBooks(
   for (const e of [...entries].sort((a, b) => a.entry_date.localeCompare(b.entry_date) || a.created_at.localeCompare(b.created_at))) {
     const amount = round(Number(e.amount));
     if (!amount) continue;
-    const base = [e.description, e.party].filter(Boolean).join(" — ");
+    const project = e.project_id ? ` [${projectName(e.project_id)}]` : "";
+    const base = [e.description, e.party].filter(Boolean).join(" — ") + project;
     const post = (account: string, dr: number, cr: number, narration = base) =>
       postings.push({ date: e.entry_date, entryId: e.id, account, dr: round(dr), cr: round(cr), narration });
-    const sides = payer(e, amount);
 
+    // A project fee is owed to the partner: no payer, no money moving.
+    if (e.category === "partner_fee" && e.owner_id) {
+      post(add(PROJECT_FEES, "Partners’ project fees", "appropriation"), amount, 0, `${base} — ${nameOfId(e.owner_id)}`);
+      post(partnerKey(e.owner_id), 0, amount, `Project fee${project}`);
+      continue;
+    }
+
+    const sides = payer(e, amount);
     if (isIncome(e.category)) {
       post(FEES, 0, amount);
       sides.forEach((s) => post(s.account, s.amount, 0, s.via ? `${base} (received by ${s.via})` : base));
@@ -113,20 +140,17 @@ export function buildBooks(
 
   const net = (list: Posting[], key: string) => round(list.filter((p) => p.account === key).reduce((a, p) => a + p.dr - p.cr, 0));
   const groupOf = (key: string) => accounts.get(key)!.group;
-  /** Profit to share: income less expenses less partners' remuneration. */
-  const divisible = (list: Posting[]) =>
+  /** What goes to reserves: income less expenses less remuneration and project fees. */
+  const retained = (list: Posting[]) =>
     round(-list.filter((p) => ["income", "expense", "appropriation"].includes(groupOf(p.account))).reduce((a, p) => a + p.dr - p.cr, 0));
-  const shares = (profit: number) => {
-    const parts = partners.length ? split(profit, partners.length) : [];
-    return new Map(partners.map((p, i) => [`partner:${p.id}`, parts[i]]));
-  };
 
   // Opening balances: balance-sheet accounts carry forward, with every
-  // earlier period's profit already shared out. Income and expenses start at nil.
-  const priorShare = shares(divisible(before));
+  // earlier period's retained profit already in Cash reserves. Income,
+  // expenses and appropriations start each period at nil.
   const opening = new Map<string, number>();
   for (const a of accounts.values()) {
-    if (a.group === "partner" || a.group === "other") opening.set(a.key, round(net(before, a.key) - (priorShare.get(a.key) ?? 0)));
+    if (a.group === "reserve") opening.set(a.key, -retained(before));
+    else if (carried(a.group)) opening.set(a.key, net(before, a.key));
   }
 
   // P&L for the period.
@@ -139,17 +163,21 @@ export function buildBooks(
   const totalIncome = round(income.reduce((a, x) => a + x.amount, 0));
   const totalExpenses = round(expenses.reduce((a, x) => a + x.amount, 0));
   const netProfit = round(totalIncome - totalExpenses);
+
+  const inPeriod = (e: AccountEntry) => !from || e.entry_date >= from;
+  const sumBy = (test: (e: AccountEntry) => boolean) => {
+    const m = new Map<string, number>();
+    for (const e of entries) if (inPeriod(e) && e.owner_id && test(e)) m.set(e.owner_id, round((m.get(e.owner_id) ?? 0) + Number(e.amount)));
+    return m;
+  };
   const remuneration = net(during, REMUNERATION);
-  const remunerationBy = new Map<string, number>();
-  for (const e of entries) {
-    if (e.category === "salary" && e.owner_id && firmIds.has(e.owner_id) && (!from || e.entry_date >= from))
-      remunerationBy.set(e.owner_id, round((remunerationBy.get(e.owner_id) ?? 0) + Number(e.amount)));
-  }
-  const toShare = round(netProfit - remuneration);
-  const share = shares(toShare);
+  const remunerationBy = sumBy((e) => e.category === "salary" && firmIds.has(e.owner_id!));
+  const projectFees = net(during, PROJECT_FEES);
+  const projectFeesBy = sumBy((e) => e.category === "partner_fee");
+  const toReserves = round(netProfit - remuneration - projectFees);
 
   // Trial balance: opening balance-sheet balances, plus the period's
-  // postings, before the profit is shared out.
+  // postings, before the profit goes to reserves.
   const trial = [...accounts.values()]
     .map((a) => {
       const bal = round((opening.get(a.key) ?? 0) + net(during, a.key));
@@ -159,13 +187,12 @@ export function buildBooks(
   const trialDr = round(trial.reduce((a, r) => a + r.dr, 0));
   const trialCr = round(trial.reduce((a, r) => a + r.cr, 0));
 
-  // Balance sheet: after the period's profit is shared.
+  // Balance sheet: after the period's profit goes to reserves.
+  const closingOf = (key: string) => round((opening.get(key) ?? 0) + net(during, key) - (key === RESERVES ? toReserves : 0));
   const closing = [...accounts.values()]
     .filter((a) => a.group === "partner" || a.group === "other")
-    .map((a) => {
-      const bal = round((opening.get(a.key) ?? 0) + net(during, a.key) - (share.get(a.key) ?? 0));
-      return { account: a, opening: opening.get(a.key) ?? 0, movement: net(during, a.key), share: share.get(a.key) ?? 0, balance: bal };
-    });
+    .map((a) => ({ account: a, opening: opening.get(a.key) ?? 0, movement: net(during, a.key), balance: closingOf(a.key) }));
+  const reserves = { opening: -(opening.get(RESERVES) ?? 0), added: toReserves, closing: -closingOf(RESERVES) };
 
   // Ledgers: each account's postings in the period with a running balance.
   const ledger = (key: string) => {
@@ -176,15 +203,22 @@ export function buildBooks(
         run = round(run + p.dr - p.cr);
         return { ...p, balance: run };
       });
-    const s = share.get(key);
-    if (s) {
-      run = round(run - s);
-      rows.push({ date: opts.to || rows.at(-1)?.date || "", entryId: "", account: key, dr: s < 0 ? -s : 0, cr: s > 0 ? s : 0, narration: `Share of ${s > 0 ? "profit" : "loss"} for the period`, balance: run });
+    if (key === RESERVES && toReserves) {
+      run = round(run - toReserves);
+      rows.push({
+        date: opts.to || rows.at(-1)?.date || "",
+        entryId: "",
+        account: key,
+        dr: toReserves < 0 ? -toReserves : 0,
+        cr: toReserves > 0 ? toReserves : 0,
+        narration: toReserves > 0 ? "Profit for the period, kept by the firm" : "Loss for the period, met from reserves",
+        balance: run,
+      });
     }
     return { opening: opening.get(key) ?? 0, rows, closing: run };
   };
 
-  const unrecorded = entries.filter((e) => !e.paid_by_id && !e.paid_by_entity && (!from || e.entry_date >= from)).length;
+  const unrecorded = entries.filter((e) => e.category !== "partner_fee" && !e.paid_by_id && !e.paid_by_entity && inPeriod(e)).length;
 
   return {
     accounts: [...accounts.values()],
@@ -195,8 +229,10 @@ export function buildBooks(
     netProfit,
     remuneration,
     remunerationBy,
-    toShare,
-    share,
+    projectFees,
+    projectFeesBy,
+    toReserves,
+    reserves,
     trial,
     trialDr,
     trialCr,
@@ -208,3 +244,40 @@ export function buildBooks(
 }
 
 export type Books = ReturnType<typeof buildBooks>;
+
+// ── Projects ───────────────────────────────────────────────────────────────
+
+export type ProjectRule = { partner_id: string; mode: "fixed" | "percent"; value: number };
+
+/**
+ * One project's numbers, all time: what the client paid, what it cost, the
+ * partners' fees due under its rules and recorded so far, and what it leaves
+ * for Cash reserves once every fee due is paid.
+ */
+export function projectSummary(entries: AccountEntry[], projectId: string, rules: ProjectRule[]) {
+  const mine = entries.filter((e) => e.project_id === projectId && e.currency === "INR");
+  const sum = (list: AccountEntry[]) => round(list.reduce((a, e) => a + Number(e.amount), 0));
+  const income = sum(mine.filter((e) => isIncome(e.category)));
+  const costs = sum(mine.filter((e) => !isIncome(e.category) && e.category !== "partner_fee"));
+  const fees = rules.map((r) => {
+    const due = r.mode === "fixed" ? r.value : round((income * r.value) / 100);
+    const recorded = sum(mine.filter((e) => e.category === "partner_fee" && e.owner_id === r.partner_id));
+    return { ...r, due, recorded, outstanding: round(due - recorded) };
+  });
+  // Fees recorded for a partner without a rule still count.
+  const ruled = new Set(rules.map((r) => r.partner_id));
+  const extra = sum(mine.filter((e) => e.category === "partner_fee" && e.owner_id && !ruled.has(e.owner_id)));
+  const feesRecorded = round(fees.reduce((a, f) => a + f.recorded, 0) + extra);
+  const feesDue = round(fees.reduce((a, f) => a + Math.max(f.due, f.recorded), 0) + extra);
+  return {
+    income,
+    costs,
+    fees,
+    feesRecorded,
+    feesDue,
+    /** Kept by the firm so far, from what's recorded. */
+    toReserves: round(income - costs - feesRecorded),
+    /** Kept by the firm once every fee due is recorded. */
+    toReservesAfterFees: round(income - costs - feesDue),
+  };
+}

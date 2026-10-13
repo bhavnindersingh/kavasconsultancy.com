@@ -8,21 +8,27 @@ import {
   OFFERED_PAYER_ENTITIES,
   RETIRED_CATEGORIES,
   isIncome,
+  isSpend,
   type AccountCategory,
   type AccountEntry,
+  type Project,
   type Currency,
 } from "@/lib/workspace/types";
 import { useWorkspace } from "../WorkspaceContext";
 import { formatDate, today } from "../tasks/bits";
 import BooksView, { type BooksTab } from "./BooksView";
 import EntryDialog from "./EntryDialog";
+import ProjectsView from "./ProjectsView";
 import SalaryDialog from "./SalaryDialog";
 import { entityKey, money, monthKey, monthLabel, payerKey, payerLabel, periodRange, type Period } from "./ledger";
 
 const TREND_MONTHS = 6;
 
-const VIEWS: { key: "entries" | BooksTab; label: string }[] = [
+type View = "entries" | "projects" | BooksTab;
+
+const VIEWS: { key: View; label: string }[] = [
   { key: "entries", label: "Entries" },
+  { key: "projects", label: "Projects" },
   { key: "pnl", label: "Profit & loss" },
   { key: "balance", label: "Balance sheet" },
   { key: "trial", label: "Trial balance" },
@@ -64,7 +70,10 @@ export default function AccountsApp() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<AccountEntry | "new" | null>(null);
   const [paying, setPaying] = useState(false);
-  const [view, setView] = useState<"entries" | BooksTab>("entries");
+  const [view, setView] = useState<View>("entries");
+  const [projects, setProjects] = useState<Project[]>([]);
+  // Prefill for a new entry, e.g. a partner fee recorded from Projects.
+  const [newDefaults, setNewDefaults] = useState<Record<string, string> | undefined>();
   const [sort, setSort] = useState<{ key: "date" | "amount"; dir: 1 | -1 }>({ key: "date", dir: -1 });
 
   function choosePeriod(p: Period) {
@@ -82,12 +91,14 @@ export default function AccountsApp() {
     if (from) q = q.gte("entry_date", from);
     if (to) q = q.lte("entry_date", to);
     const trendFrom = monthKey(today(), -(TREND_MONTHS - 1)) + "-01";
-    const [list, tr] = await Promise.all([
+    const [list, tr, pr] = await Promise.all([
       q,
       supabase.from("account_entries").select("entry_date, category, currency, amount, owner_id").gte("entry_date", trendFrom),
+      supabase.from("projects").select("*, project_partner_fees(*)").order("name"),
     ]);
     setLoading(false);
-    if (list.error || tr.error) return setError((list.error ?? tr.error)!.message);
+    if (list.error || tr.error || pr.error) return setError((list.error ?? tr.error ?? pr.error)!.message);
+    setProjects((pr.data ?? []) as Project[]);
     setEntries((list.data ?? []) as AccountEntry[]);
     setTrend((tr.data ?? []) as typeof trend);
   }, [supabase, from, to]);
@@ -141,7 +152,7 @@ export default function AccountsApp() {
   /** Money in and out of a set of entries, for subtotals: "+₹50,000 in · ₹12,000 out". */
   const flowOf = (list: AccountEntry[]) => {
     const inn = list.filter((e) => isIncome(e.category));
-    const out = list.filter((e) => !isIncome(e.category));
+    const out = list.filter((e) => isSpend(e.category));
     return (
       <>
           {inn.length > 0 && <span className="text-[#067647]">+{sumOf(inn)} in</span>}
@@ -182,7 +193,7 @@ export default function AccountsApp() {
     () => ACCOUNT_CATEGORIES.filter((c) => !RETIRED_CATEGORIES.includes(c) || entries.some((e) => e.category === c) || trend.some((e) => e.category === c)),
     [entries, trend],
   );
-  const spendCategories = categories.filter((c) => !isIncome(c));
+  const spendCategories = categories.filter((c) => isSpend(c));
   // With ten heads, cards and trend columns show only the ones with money in
   // them (a selected head always shows, so its card can be clicked off).
   const cardHeads = spendCategories.filter((c) => c === category || inPeriod.some((e) => e.category === c));
@@ -193,7 +204,7 @@ export default function AccountsApp() {
     .map((cur) => {
       const of = inPeriod.filter((e) => e.currency === cur);
       const inn = of.filter((e) => isIncome(e.category)).reduce((a, e) => a + Number(e.amount), 0);
-      const out = of.filter((e) => !isIncome(e.category)).reduce((a, e) => a + Number(e.amount), 0);
+      const out = of.filter((e) => isSpend(e.category)).reduce((a, e) => a + Number(e.amount), 0);
       return { cur, inn, out, net: inn - out };
     })
     .filter((f) => f.cur === "INR" || f.inn || f.out);
@@ -323,7 +334,23 @@ export default function AccountsApp() {
         )}
       </div>
 
-      {view !== "entries" ? (
+      {view === "projects" ? (
+        <ProjectsView
+          projects={projects}
+          onChanged={load}
+          onRecordFee={(projectId, partnerId, amount) => {
+            const pr = projects.find((x) => x.id === projectId);
+            setNewDefaults({
+              category: "partner_fee",
+              project_id: projectId,
+              owner_id: partnerId,
+              amount: String(amount),
+              description: `Project fee — ${pr?.name ?? "project"}`,
+            });
+            setEditing("new");
+          }}
+        />
+      ) : view !== "entries" ? (
         <BooksView tab={view} from={from} to={to} periodLabel={period === "custom" ? `${from ? formatDate(from) : "Start"} – ${to ? formatDate(to) : "today"}` : (PERIOD_LABEL[period] ?? "")} />
       ) : (
       <>
@@ -355,7 +382,7 @@ export default function AccountsApp() {
         </div>
       </div>
 
-      <WhoPaid entries={entries} partners={firmPartners} capitalPartners={capitalPartners} nameOf={nameOf} onPick={setPayer} />
+      <WhoPaid entries={entries} partners={firmPartners} capitalPartners={capitalPartners} nameOf={nameOf} onPick={setPayer} onBalances={() => setView("balance")} />
 
       {/* Spending by category */}
       {cardHeads.length === 0 && !loading && <p className="mb-4 px-1 text-sm text-mute">No spending in this period yet.</p>}
@@ -427,14 +454,20 @@ export default function AccountsApp() {
                   <td className="px-4 py-2.5 min-w-56">
                     {e.description}
                     <span className="block text-xs text-mute">
-                      {[e.owner_id && e.party, isIncome(e.category) && e.invoice_no && `Invoice ${e.invoice_no}`, e.reference_no && `Ref ${e.reference_no}`, e.gst_applicable && "GST", e.account_files?.length && `${e.account_files.length} receipt${e.account_files.length > 1 ? "s" : ""}`]
+                      {[e.project_id && `Project: ${projects.find((x) => x.id === e.project_id)?.name ?? "—"}`, e.owner_id && e.party, isIncome(e.category) && e.invoice_no && `Invoice ${e.invoice_no}`, e.reference_no && `Ref ${e.reference_no}`, e.gst_applicable && "GST", e.account_files?.length && `${e.account_files.length} receipt${e.account_files.length > 1 ? "s" : ""}`]
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 whitespace-nowrap">{e.owner_id ? nameOf(e.owner_id) : e.party ?? <span className="text-mute">—</span>}</td>
                   <td className="px-4 py-2.5 whitespace-nowrap">
-                    {payerKey(e) ? payerLabel(payerKey(e), nameOf) : <span className="text-[#b54708]">Not recorded</span>}
+                    {e.category === "partner_fee" ? (
+                      <span className="text-mute">Owed to {nameOf(e.owner_id).split(" ")[0]}</span>
+                    ) : payerKey(e) ? (
+                      payerLabel(payerKey(e), nameOf)
+                    ) : (
+                      <span className="text-[#b54708]">Not recorded</span>
+                    )}
                     {e.payment_method && <span className="block text-xs text-mute">{e.payment_method}</span>}
                   </td>
                   <td className={`px-4 py-2.5 text-right tabular-nums whitespace-nowrap ${isIncome(e.category) ? "text-[#067647]" : ""}`}>
@@ -554,10 +587,18 @@ export default function AccountsApp() {
       {editing && (
         <EntryDialog
           entry={editing === "new" ? null : editing}
+          projects={projects}
+          defaults={editing === "new" ? newDefaults : undefined}
           partners={partners}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            setNewDefaults(undefined);
+          }}
           onSaved={(another) => {
-            if (!another) setEditing(null);
+            if (!another) {
+              setEditing(null);
+              setNewDefaults(undefined);
+            }
             load();
           }}
         />
@@ -591,13 +632,9 @@ function Signed({ v, cur }: { v: number; cur: Currency }) {
 }
 
 /**
- * Who has put in what over the period, and the equal-shares settlement.
- *
- * A partner's contribution is what they paid out, less what clients paid
- * into their account. Kavas Capital is its partners' own firm, so what it
- * pays (or receives) counts equally to each of them. The contributions are
- * then evened out in equal shares across the firm's partners: above your
- * share, you're owed; below it, you owe.
+ * What each partner, and Kavas Capital, paid and received in the period.
+ * What that leaves each of them owed or holding — after project fees, with
+ * the rest kept as Cash reserves — is on the Balance sheet tab.
  */
 function WhoPaid({
   entries,
@@ -605,12 +642,14 @@ function WhoPaid({
   capitalPartners,
   nameOf,
   onPick,
+  onBalances,
 }: {
   entries: AccountEntry[];
   partners: { id: string; full_name: string | null; email: string }[];
-  capitalPartners: { id: string }[];
+  capitalPartners: { id: string; full_name: string | null; email: string }[];
   nameOf: (id: string | null) => string;
   onPick: (payer: string) => void;
+  onBalances: () => void;
 }) {
   if (!entries.length) return null;
   if (!partners.length)
@@ -622,82 +661,40 @@ function WhoPaid({
 
   const capitalKey = entityKey("kavas_capital");
   const capitalName = payerLabel(capitalKey, nameOf);
-  const curs = (["INR", "USD"] as Currency[]).filter((cur) => cur === "INR" || entries.some((e) => e.currency === cur));
-  const flowFor = (key: string, cur: Currency) => {
-    const of = entries.filter((e) => e.currency === cur && payerKey(e) === key);
-    const out = of.filter((e) => !isIncome(e.category)).reduce((a, e) => a + Number(e.amount), 0);
-    const inn = of.filter((e) => isIncome(e.category)).reduce((a, e) => a + Number(e.amount), 0);
-    return { out, inn, put: out - inn };
+  const flowFor = (key: string) => {
+    const of = entries.filter((e) => e.currency === "INR" && payerKey(e) === key);
+    return {
+      out: of.filter((e) => isSpend(e.category)).reduce((a, e) => a + Number(e.amount), 0),
+      inn: of.filter((e) => isIncome(e.category)).reduce((a, e) => a + Number(e.amount), 0),
+    };
   };
-  const unrecorded = entries.filter((e) => !payerKey(e)).length;
-  // Kavas Capital's money is split among its partners who are also partners here.
-  const capitalSplit = partners.filter((p) => capitalPartners.some((c) => c.id === p.id));
-
-  const rows = curs.map((cur) => {
-    const capital = flowFor(capitalKey, cur);
-    const viaCapital = capitalSplit.length ? capital.put / capitalSplit.length : 0;
-    const each = partners.map((p) => {
-      const own = flowFor(p.id, cur);
-      const fromCapital = capitalSplit.some((c) => c.id === p.id) ? viaCapital : 0;
-      return { p, ...own, fromCapital, put: own.put + fromCapital };
-    });
-    // Unsplit Kavas Capital money (no partner marked) still counts toward the total.
-    const total = each.reduce((a, x) => a + x.put, 0) + (capitalSplit.length ? 0 : capital.put);
-    const share = total / partners.length;
-    return { cur, capital, share, each: each.map((x) => ({ ...x, balance: x.put - share })) };
-  });
+  const unrecorded = entries.filter((e) => isSpend(e.category) || isIncome(e.category)).filter((e) => !payerKey(e)).length;
+  const capital = flowFor(capitalKey);
+  const capitalFor = capitalPartners.map((p) => (p.full_name || p.email).split(" ")[0]).join(" and ");
+  const card = (key: string, title: string, f: { out: number; inn: number }, note?: string, tint = false) => (
+    <button key={key} onClick={() => onPick(key)} className={`rounded-xl border border-line p-3 text-left hover:border-ghost ${tint ? "bg-paper" : ""}`}>
+      <span className="block font-medium">{title}</span>
+      <span className="block text-sm tabular-nums">Paid {money(f.out, "INR")}</span>
+      <span className={`block text-sm tabular-nums ${f.inn ? "text-[#067647]" : "text-mute"}`}>Received {money(f.inn, "INR")}</span>
+      {note && <span className="mt-1 block text-xs text-mute">{note}</span>}
+    </button>
+  );
 
   return (
     <section className="mb-6 rounded-2xl border border-line bg-card p-4">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-medium">Who’s paid what</h2>
-        <p className="text-xs text-mute">
-          {partners.length} equal partners · each one’s share is {partners.length === 3 ? "a third" : `1/${partners.length}`}
-          {capitalSplit.length > 0 && ` · ${capitalName} counts to ${capitalSplit.map((p) => (p.full_name || p.email).split(" ")[0]).join(" and ")} equally`}
-        </p>
+        <h2 className="font-medium">Who paid and received, this period</h2>
+        <button className="text-xs text-mute underline underline-offset-2 hover:text-ink" onClick={onBalances}>
+          Who’s owed what → Balance sheet
+        </button>
       </div>
-      {rows.map(({ cur, capital, share, each }) => (
-        <div key={cur} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 [&+&]:mt-4">
-          {curs.length > 1 && <p className="col-span-full text-xs font-medium text-mute">In {cur}</p>}
-          {each.map(({ p, out, inn, fromCapital, balance }) => {
-            const settled = Math.abs(balance) < 1;
-            return (
-              <button key={p.id} onClick={() => onPick(p.id)} className="rounded-xl border border-line p-3 text-left hover:border-ghost">
-                <span className="block font-medium">{p.full_name || p.email}</span>
-                <span className="block text-sm tabular-nums">Paid {money(out, cur)}</span>
-                {inn > 0 && <span className="block text-sm tabular-nums text-[#067647]">Received {money(inn, cur)}</span>}
-                {fromCapital !== 0 && (
-                  <span className="block text-xs text-mute tabular-nums">
-                    {fromCapital > 0 ? "+" : "−"}
-                    {money(Math.abs(fromCapital), cur)} via {capitalName}
-                  </span>
-                )}
-                <span className={`mt-1 block text-sm font-medium tabular-nums ${settled ? "text-mute" : balance > 0 ? "text-[#067647]" : "text-[#b42318]"}`}>
-                  {settled ? "Even" : balance > 0 ? `Is owed ${money(balance, cur)}` : `Owes ${money(-balance, cur)}`}
-                </span>
-              </button>
-            );
-          })}
-          <button onClick={() => onPick(capitalKey)} className="rounded-xl border border-line bg-paper p-3 text-left hover:border-ghost">
-            <span className="block font-medium">{capitalName}</span>
-            <span className="block text-sm tabular-nums">Paid {money(capital.out, cur)}</span>
-            {capital.inn > 0 && <span className="block text-sm tabular-nums text-[#067647]">Received {money(capital.inn, cur)}</span>}
-            <span className="mt-1 block text-xs text-mute">
-              {capitalSplit.length
-                ? `Counted to ${capitalSplit.map((p) => (p.full_name || p.email).split(" ")[0]).join(" and ")}, equally`
-                : "Mark its partners on the Team page to count this to them"}
-            </span>
-          </button>
-          {share !== 0 && (
-            <p className="col-span-full text-xs text-mute">
-              Each partner’s share of the {share > 0 ? "net spending" : "net income"}: {money(Math.abs(share), cur)}.
-            </p>
-          )}
-        </div>
-      ))}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {partners.map((p) => card(p.id, p.full_name || p.email, flowFor(p.id)))}
+        {card(capitalKey, capitalName, capital, capitalFor ? `For ${capitalFor}, equally` : undefined, true)}
+      </div>
       {unrecorded > 0 && (
         <p className="mt-3 text-sm text-[#b54708]">
-          {unrecorded} entr{unrecorded === 1 ? "y doesn’t" : "ies don’t"} say who paid, so {unrecorded === 1 ? "it isn’t" : "they aren’t"} counted here.{" "}
+          {unrecorded} entr{unrecorded === 1 ? "y doesn’t" : "ies don’t"} say who paid.{" "}
           <button className="underline underline-offset-2" onClick={() => onPick(NO_PAYER)}>Show {unrecorded === 1 ? "it" : "them"}</button>
         </p>
       )}
